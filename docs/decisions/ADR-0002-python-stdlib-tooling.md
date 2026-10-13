@@ -46,10 +46,28 @@ them in seconds.
      specified, in-tree PRNG (SplitMix64), seeded explicitly.
    - Iteration order never depends on set ordering.
    - Files are written in binary mode with explicit encodings and newlines.
-   - Canonical manifests are JSON serialized per RFC 8785 (JCS). Corpus
-     metadata carries no JSON floating-point numbers, so integer and string
-     serialization is enough to produce JCS output. Numeric fixture values
-     that need exactness are written as strings.
+   - Canonical manifests use a **constrained JSON subset** whose canonical
+     form is RFC 8785 (JCS) output by construction. Ordinary Python JSON
+     serialization alone is not JCS, so the subset and its serializer are
+     specified together:
+     - Values are objects, arrays, strings, `true`, `false`, `null`, and
+       integers. There are no floating-point numbers. Numeric fixture values
+       that need exactness, or that fall outside the integer range, are
+       written as strings.
+     - Integers lie in the interoperable range −(2^53 − 1) to 2^53 − 1
+       (RFC 7493), so every JCS implementation serializes them identically.
+     - Strings are valid Unicode: lone surrogates are rejected on input, and
+       JSON escapes that decode to a lone surrogate are rejected too.
+     - Object member names are unique.
+     - The serializer sorts members by the UTF-16 code-unit order of their
+       names, as JCS requires, not by Python's code-point order. The two
+       differ for names containing characters above U+FFFF.
+     - Output is UTF-8 with no insignificant whitespace. Characters are
+       escaped as JCS specifies: the short escapes, `\u00XX` for other
+       control characters, and every other character emitted literally.
+     - The validator rejects metadata outside the subset. Tests check the
+       serializer against published JCS test vectors that fall within the
+       subset, and against cases where UTF-16 and code-point order differ.
 4. **No Python package manager, ever.** There is no `requirements.txt`,
    `pyproject.toml` dependency list, virtual environment, or installer step
    (pip, uv, poetry, or otherwise). The tools are plain scripts run directly

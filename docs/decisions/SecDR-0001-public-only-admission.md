@@ -82,8 +82,12 @@ transformation.**
    metadata and code comments are rewritten to meet this rule before the
    first commit that contains it.
 8. **Dependency direction is one way.** Consumers pin structcorpus. This
-   repository never references, pins, or enumerates its consumers, so a
-   public checkout never discloses a private one.
+   repository never pins, depends on, or keeps an inventory of its
+   consumers, and never references private material of any kind.
+   **One exception:** a profile may cite the *published normative
+   specification* that defines it (DDR-0002), by public URL and revision
+   or errata identifier. That citation identifies the rules being tested.
+   It does not list who consumes the corpus.
 9. **A scan is not a classification.** Secret and leak scanners run as
    defense in depth. A clean scan does not substitute for provenance review,
    and a provenance record is required regardless of scan results.

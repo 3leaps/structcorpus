@@ -5,7 +5,8 @@ Subcommands:
   validate   Check repository rules (DDR-0001, SecDR-0001). Case-record
              validation is added with the case schemas (DDR-0002).
 
-Hydrate, verify, and list are added with recipes (PDR-0001, stage 0.2).
+Hydrate and verify are added with the first generated material (PDR-0001,
+stage 0.1); list arrives with the recipe ladders (stage 0.2).
 """
 
 import argparse
@@ -20,6 +21,8 @@ MAX_FIXTURE_BYTES = 256 * 1024
 MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
 MAX_PATH_CHARS = 200
 BYTE_EXACT_TREES = ("fixtures", "expected")
+BYTE_EXACT_ATTRS = "-text -filter -ident -working-tree-encoding"
+MAX_SAFE_INT = 2 ** 53 - 1
 FORBIDDEN_DIRS = {"unknown", "pending", "quarantine", "staging", "intake"}
 
 COMPONENT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
@@ -43,17 +46,46 @@ def _reject_duplicates(pairs):
     return obj
 
 
+def _check_subset(value):
+    """Enforce the ADR-0002 metadata subset on a decoded value."""
+    if isinstance(value, bool) or value is None:
+        return
+    if isinstance(value, int):
+        if not -MAX_SAFE_INT <= value <= MAX_SAFE_INT:
+            raise ValueError("integer outside the interoperable range: %d" % value)
+    elif isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("string contains a lone surrogate")
+    elif isinstance(value, list):
+        for item in value:
+            _check_subset(item)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _check_subset(key)
+            _check_subset(item)
+    else:
+        raise ValueError("value outside the metadata subset: %s" % type(value).__name__)
+
+
 def load_json_strict(data):
-    """Parse JSON bytes, rejecting duplicate keys and non-finite numbers."""
+    """Parse JSON bytes into the ADR-0002 metadata subset.
+
+    Rejects duplicate keys, floating-point and non-finite numbers, integers
+    outside +/-(2**53 - 1), and lone surrogates (raw or escaped).
+    """
 
     def bad_constant(name):
         raise ValueError("non-standard JSON constant: %s" % name)
 
-    return json.loads(
+    value = json.loads(
         data.decode("utf-8"),
         object_pairs_hook=_reject_duplicates,
         parse_constant=bad_constant,
     )
+    _check_subset(value)
+    return value
 
 
 def path_problems(rel):
@@ -88,8 +120,8 @@ def check_repository(root):
             attrs = fh.read().decode("utf-8")
     total = 0
     for tree in BYTE_EXACT_TREES:
-        if "/%s/** -text" % tree not in attrs:
-            errors.append(".gitattributes: /%s/** must be marked -text" % tree)
+        if "/%s/** %s" % (tree, BYTE_EXACT_ATTRS) not in attrs:
+            errors.append(".gitattributes: /%s/** must set %s" % (tree, BYTE_EXACT_ATTRS))
         top = os.path.join(root, tree)
         if not os.path.isdir(top):
             continue

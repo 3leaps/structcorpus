@@ -35,8 +35,8 @@ python3 tools/corpus.py validate          # repository and admission rules
 python3 -m unittest discover -s tests     # corpus-tool tests
 ```
 
-`hydrate`, `verify`, and `list` will arrive together with the generator
-recipes. See [PDR-0001](docs/decisions/PDR-0001-staged-releases.md) for the
+`hydrate` and `verify` will arrive with the first generated material, and
+`list` with the recipe ladders. See [PDR-0001](docs/decisions/PDR-0001-staged-releases.md) for the
 release stages.
 
 ## Status

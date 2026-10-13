@@ -10,7 +10,8 @@ Release stages are defined in
 | YAML scalar resolution and duplicate-key truth generator | Planned, 0.1 |
 | YAML hand-checked goldens and wire cases | Planned, 0.1 |
 | YAML adversarial families and bounded recipes | Planned, 0.2 |
-| Hydrate / verify / list, containment runner, stress tier | Planned, 0.2 |
+| Minimal bounded hydrate / verify for the truth generator | Planned, 0.1 |
+| `list`, recipe ladders, containment runner, stress tier | Planned, 0.2 |
 | yaml-test-suite import, Windows/Linux parity matrix | Planned, 0.3 |
 | Binding lifetime and streaming input surfaces | Unsupported until a consumer exposes them |
 | JSON, XML | Reserved |

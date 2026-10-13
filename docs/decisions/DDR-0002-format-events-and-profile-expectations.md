@@ -22,23 +22,34 @@ adapter's contract. No other engine can be wrong against them.
 
 ## Decision
 
-1. **Two kinds of expectation, and a case may carry either or both:**
+1. **Three independent kinds of expectation; a case carries any non-empty subset:**
    - **`events`** are format-level and engine-neutral. They record validity
      under a named format revision (for example YAML 1.2.2), plus the event
-     stream in the yaml-test-suite event notation, extended with byte
-     offsets. Any engine can be checked against them, and upstream
-     yaml-test-suite cases map onto them.
+     *content*: kinds, order, anchors, tags, scalar styles, and values. The
+     notation is the yaml-test-suite event format, pinned to a named
+     upstream revision. The event content carries no positions. Any engine
+     can be checked against it, and upstream yaml-test-suite cases map onto
+     it.
    - **`value`** is profile-bound. It records the resolved value tree, typed
      conversions, and errors under a named, versioned profile. A profile
-     pins its own published specification revision and accepted errata. The
+     cites the published normative specification revision and accepted
+     errata that define it, by public reference only (SecDR-0001). The
      `value` representation is the profile's own wire schema, and nothing
      claims it is universal.
+   - **`locations`** are optional and separate from both. YAML does not
+     define which offsets a parser should report for an event, so offsets
+     are always stated under a named, versioned **span convention** that
+     the corpus defines and pins. A case can therefore be fully conformant on
+     syntax and events while its location conformance is reported
+     separately, or is not applicable.
 2. **Budgets, accounting, and limit errors are profile-only.** Families such
    as tag accounting, alias expansion, merge budget, and depth state their
    format-level part as `events` (valid or invalid, plus the stream).
    Everything numeric about cost goes under a profile.
-3. **Locations are byte offsets only.** Expectations record byte offsets
-   into the original input, together with a reference to a span convention.
+3. **Locations are byte offsets only.** Location expectations record byte
+   offsets into the original input, under a named span convention that
+   defines start and end points for each node kind, aliases (both
+   definition and use), and empty nodes.
    Line, column (1-based, in Unicode scalar values), and UTF-16 offsets are
    derived by corpus tooling and never typed by hand. Which bytes count as
    line breaks is part of the profile; YAML 1.2 treats U+2028, U+2029, and
@@ -61,7 +72,7 @@ adapter's contract. No other engine can be wrong against them.
 
 ## Consequences
 
-- Upstream suites and non-reference engines can use the format-level layer
+- Upstream suites and non-reference engines can use the format-level event layer
   without adopting any adapter's policy.
 - A consumer that disagrees with a profile adds a profile. Format truth is not
   in dispute.

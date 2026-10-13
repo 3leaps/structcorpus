@@ -9,7 +9,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import corpus  # noqa: E402
 
-ATTRS = b"* text=auto\n/fixtures/** -text\n/expected/** -text\n"
+ATTRS = (
+    b"* text=auto\n"
+    b"/fixtures/** -text -filter -ident -working-tree-encoding\n"
+    b"/expected/** -text -filter -ident -working-tree-encoding\n"
+)
 
 
 def write(root, rel, data):
@@ -50,6 +54,26 @@ class TestStrictJson(unittest.TestCase):
             with self.assertRaises(ValueError):
                 corpus.load_json_strict(text)
 
+    def test_rejects_floats(self):
+        for text in (b'{"a": 1.0}', b'{"a": 1e3}', b'[0.5]'):
+            with self.assertRaises(ValueError):
+                corpus.load_json_strict(text)
+
+    def test_integer_range(self):
+        self.assertEqual(corpus.load_json_strict(b"[9007199254740991, -9007199254740991]"),
+                         [2 ** 53 - 1, -(2 ** 53 - 1)])
+        for text in (b"[9007199254740992]", b"[-9007199254740992]", b'{"a": [1e400]}'):
+            with self.assertRaises(ValueError):
+                corpus.load_json_strict(text)
+
+    def test_rejects_lone_surrogates(self):
+        for text in (b'["\\ud800"]', b'{"\\udc00": 1}', b'["x\\ud83d"]'):
+            with self.assertRaises(ValueError):
+                corpus.load_json_strict(text)
+
+    def test_accepts_surrogate_pair(self):
+        self.assertEqual(corpus.load_json_strict(b'["\\ud83d\\ude00"]'), ["\U0001F600"])
+
     def test_accepts_plain(self):
         self.assertEqual(corpus.load_json_strict(b'{"a": [1, "x"]}'), {"a": [1, "x"]})
 
@@ -78,7 +102,11 @@ class TestRepositoryRules(RepoCase):
 
     def test_missing_gitattributes_rule(self):
         write(self.root, ".gitattributes", b"* text=auto\n")
-        self.assertRejected("must be marked -text")
+        self.assertRejected("must set -text")
+
+    def test_gitattributes_text_only_is_insufficient(self):
+        write(self.root, ".gitattributes", b"/fixtures/** -text\n/expected/** -text\n")
+        self.assertRejected("-filter")
 
     def test_staging_directory(self):
         write(self.root, "fixtures/unknown/x.yaml", b"a: 1\n")

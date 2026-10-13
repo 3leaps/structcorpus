@@ -1,6 +1,8 @@
 # Default: normalize ordinary text.
 * text=auto
 
-# Byte-exact trees (DDR-0001): never convert line endings or apply filters.
-/fixtures/** -text
-/expected/** -text
+# Byte-exact trees (DDR-0001): unset end-of-line conversion, clean/smudge
+# filters, ident expansion, and re-encoding. Checkout hash verification is
+# still the control that holds; attributes can be overridden locally.
+/fixtures/** -text -filter -ident -working-tree-encoding
+/expected/** -text -filter -ident -working-tree-encoding

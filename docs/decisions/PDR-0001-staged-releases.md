@@ -20,8 +20,8 @@ Reviewed synthetic material already exists and can ship sooner.
 
 | Stage | Contents | Consumers and tiers |
 | --- | --- | --- |
-| **0.1** | Foundation: policy, decision records, schemas, validator with negative and mutation tests, byte-preservation rules. Migrated reviewed synthetic material: scalar/duplicate-key truth generator with pinned hashes and counts, hand-checked goldens, wire cases, negatives. | One consumer driver; smoke and conformance tiers only |
-| **0.2** | Every YAML adversarial family, the seven bounded recipes, hydration with output caps, stress tier with a verified containment runner (SecDR-0002) | Stress tier added |
+| **0.1** | Foundation: policy, decision records, schemas, validator with negative and mutation tests, byte-preservation rules. Migrated reviewed synthetic material: scalar/duplicate-key truth generator with pinned hashes and counts, hand-checked goldens, wire cases, negatives. Minimal bounded `hydrate` and `verify` for that generated material: output root outside the checkout, aggregate caps, atomic finalize, hash verification. | One consumer driver; smoke and conformance tiers only |
+| **0.2** | Every YAML adversarial family, the seven bounded recipes, `list` and hydration of the larger recipe ladders, stress tier with a verified containment runner (SecDR-0002) | Stress tier added |
 | **0.3** | Pinned yaml-test-suite import with retained notices and upstream IDs; full Windows/Linux parity matrix | Broader engines and bindings |
 
 Fuzz-seed promotion, JSON, and XML follow when a consumer commits to them.
