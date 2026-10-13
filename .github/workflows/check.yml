@@ -1,0 +1,71 @@
+name: check
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+permissions:
+  contents: read
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  corpus:
+    name: corpus (${{ matrix.runner }}, python ${{ matrix.python }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            python: "3.9"
+          - runner: ubuntu-latest
+            python: "3.14"
+          - runner: macos-15
+            python: "3.14"
+          - runner: windows-latest
+            python: "3.14"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test corpus tool
+        run: python -m unittest discover -s tests -v
+      - name: Validate repository
+        run: python tools/corpus.py validate
+  corpus-arm64:
+    name: corpus (${{ matrix.runner }}, python ${{ matrix.python }})
+    # Custom ARM64 runners are available only for branches in this repository.
+    # yamllint disable rule:line-length
+    if: >-
+      github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # yamllint enable rule:line-length
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest-arm64-s
+            python: "3.14"
+          - runner: windows-latest-arm64-s
+            python: "3.14"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test corpus tool
+        run: python -m unittest discover -s tests -v
+      - name: Validate repository
+        run: python tools/corpus.py validate

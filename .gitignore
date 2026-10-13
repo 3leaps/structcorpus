@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Hydration and run output must live outside the checkout; these guard
+# against accidents only (.gitignore is not a security boundary).
+/out/
+/tmp/
+/results/
+
+# Local agent / planning notes (never commit)
+/AGENTS.local.md
+/.plans/
+
+# Public-surface scan configuration is kept out of the tree (never commit).
+/.limensafe/
