@@ -1,0 +1,114 @@
+{
+ "category": "scalar-resolution",
+ "classifiers": {
+  "access-tier": "public",
+  "sensitivity": "0-public"
+ },
+ "dialect": "yaml-1.2.2",
+ "execution": {
+  "hazards": [
+   "deep-nesting"
+  ],
+  "tier": "smoke"
+ },
+ "expectations": {
+  "events": {
+   "events": [
+    "+STR",
+    "+DOC",
+    "+MAP",
+    "=VAL :enabled",
+    "=VAL :true",
+    "=VAL :mode",
+    "=VAL :TRUE",
+    "=VAL :label",
+    "=VAL :tRUE",
+    "=VAL :quoted",
+    "=VAL \"true",
+    "-MAP",
+    "-DOC",
+    "-STR"
+   ],
+   "notation": "yaml-test-suite",
+   "status": "valid"
+  },
+  "value": [
+   {
+    "documents": [
+     {
+      "entries": [
+       [
+        {
+         "t": "str",
+         "v": "enabled"
+        },
+        {
+         "t": "bool",
+         "v": true
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "mode"
+        },
+        {
+         "t": "bool",
+         "v": true
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "label"
+        },
+        {
+         "t": "str",
+         "v": "tRUE"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "quoted"
+        },
+        {
+         "t": "str",
+         "v": "true"
+        }
+       ]
+      ],
+      "t": "map"
+     }
+    ],
+    "profile": "yaml-core",
+    "profile_revision": 1
+   }
+  ]
+ },
+ "format": "yaml",
+ "id": "yaml.core.bool-variants",
+ "input": {
+  "bytes": 52,
+  "path": "fixtures/yaml/core-bool-variants.yaml",
+  "sha256": "78e613db1ce1ea65032d02973b5641e46fcddfd9d99adfc12cb547c776efba7a"
+ },
+ "provenance": {
+  "license": "MIT OR Apache-2.0",
+  "method": "Hand-authored for structcorpus from the YAML 1.2.2 specification.",
+  "origin": "synthetic"
+ },
+ "relations": {
+  "family": "boolean-resolution",
+  "spec_refs": [
+   "https://yaml.org/spec/1.2.2/"
+  ]
+ },
+ "review": {
+  "author": "devlead",
+  "rationale": "Core schema accepts true, True and TRUE only; mixed case and quoted text stay strings.",
+  "status": "provisional"
+ },
+ "revision": 1,
+ "schema_version": "case/v1"
+}

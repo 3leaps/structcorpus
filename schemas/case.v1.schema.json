@@ -1,0 +1,197 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/3leaps/structcorpus/schemas/case.v1.schema.json",
+  "title": "structcorpus case record v1 (DDR-0003)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "revision", "format", "dialect", "category", "classifiers", "provenance", "input", "expectations", "execution", "review"],
+  "properties": {
+    "schema_version": {"const": "case/v1"},
+    "id": {"$ref": "#/definitions/id"},
+    "revision": {"type": "integer", "minimum": 1},
+    "format": {"enum": ["yaml"]},
+    "dialect": {"enum": ["yaml-1.2.2"]},
+    "category": {"$ref": "#/definitions/slug"},
+    "classifiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sensitivity", "access-tier"],
+      "properties": {
+        "sensitivity": {"const": "0-public"},
+        "access-tier": {"const": "public"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "license", "method"],
+      "properties": {
+        "origin": {"enum": ["synthetic", "public-source"]},
+        "license": {"type": "string", "minLength": 1},
+        "method": {"type": "string", "minLength": 1, "maxLength": 500},
+        "upstream": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "id"],
+          "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "id": {"type": "string", "minLength": 1}
+          }
+        }
+      },
+      "if": {"properties": {"origin": {"const": "public-source"}}},
+      "then": {"required": ["upstream"]},
+      "else": {"not": {"required": ["upstream"]}}
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "bytes"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^fixtures/yaml/[a-z0-9][a-z0-9._-]*$"},
+        "recipe": {"type": "string", "pattern": "^recipes/yaml/[a-z0-9][a-z0-9._-]*$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bytes": {"type": "integer", "minimum": 0}
+      },
+      "oneOf": [
+        {"required": ["path"], "not": {"required": ["recipe"]}},
+        {"required": ["recipe"], "not": {"required": ["path"]}}
+      ]
+    },
+    "expectations": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "events": {"$ref": "#/definitions/events"},
+        "value": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/valueExpectation"}},
+        "locations": {"$ref": "#/definitions/locations"}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "hazards"],
+      "properties": {
+        "tier": {"enum": ["smoke", "conformance", "stress"]},
+        "hazards": {"type": "array", "uniqueItems": true, "items": {"enum": ["alias-expansion", "deep-nesting", "large-input", "many-keys", "long-scalar", "late-failure"]}},
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "wall_ms": {"type": "integer", "minimum": 1},
+            "memory_bytes": {"type": "integer", "minimum": 1},
+            "output_bytes": {"type": "integer", "minimum": 1}
+          }
+        }
+      },
+      "if": {"properties": {"hazards": {"minItems": 1}}},
+      "then": {"required": ["budgets"]}
+    },
+    "relations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family": {"$ref": "#/definitions/slug"},
+        "spec_refs": {"type": "array", "items": {"type": "string", "pattern": "^https://"}}
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "author", "rationale"],
+      "properties": {
+        "status": {"enum": ["provisional", "reviewed"]},
+        "author": {"$ref": "#/definitions/slug"},
+        "reviewer": {"$ref": "#/definitions/slug"},
+        "method": {"type": "string"},
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 1000}
+      },
+      "if": {"properties": {"status": {"const": "reviewed"}}},
+      "then": {"required": ["reviewer", "method"]}
+    }
+  },
+  "definitions": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$"},
+    "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "events": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["notation", "status"],
+      "properties": {
+        "notation": {"const": "yaml-test-suite"},
+        "status": {"enum": ["valid", "invalid"]},
+        "events": {"type": "array", "minItems": 2, "items": {"type": "string", "pattern": "^[+=-][A-Z]{3}( .*)?$"}}
+      },
+      "if": {"properties": {"status": {"const": "valid"}}},
+      "then": {"required": ["events"]},
+      "else": {"not": {"required": ["events"]}}
+    },
+    "valueExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "profile_revision"],
+      "properties": {
+        "profile": {"$ref": "#/definitions/slug"},
+        "profile_revision": {"type": "integer", "minimum": 1},
+        "documents": {"type": "array", "items": {"$ref": "#/definitions/value"}},
+        "error": {"$ref": "#/definitions/error"}
+      },
+      "oneOf": [
+        {"required": ["documents"], "not": {"required": ["error"]}},
+        {"required": ["error"], "not": {"required": ["documents"]}}
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase"],
+      "properties": {
+        "phase": {"enum": ["input", "syntax", "resolution", "structure", "limit", "typed"]},
+        "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "limit": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+      },
+      "if": {"properties": {"phase": {"const": "limit"}}},
+      "then": {"required": ["limit"]},
+      "else": {"not": {"required": ["limit"]}}
+    },
+    "value": {
+      "type": "object",
+      "required": ["t"],
+      "oneOf": [
+        {"additionalProperties": false, "properties": {"t": {"const": "null"}}},
+        {"additionalProperties": false, "required": ["v"], "properties": {"t": {"const": "bool"}, "v": {"type": "boolean"}}},
+        {"additionalProperties": false, "required": ["v"], "properties": {"t": {"const": "int"}, "v": {"type": "string", "pattern": "^(0|-?[1-9][0-9]*)$"}}},
+        {"additionalProperties": false, "required": ["bits"], "properties": {"t": {"const": "float"}, "bits": {"type": "string", "pattern": "^[0-9a-f]{16}$"}}},
+        {"additionalProperties": false, "required": ["v"], "properties": {"t": {"const": "str"}, "v": {"type": "string"}}},
+        {"additionalProperties": false, "required": ["items"], "properties": {"t": {"const": "seq"}, "items": {"type": "array", "items": {"$ref": "#/definitions/value"}}}},
+        {"additionalProperties": false, "required": ["entries"], "properties": {"t": {"const": "map"}, "entries": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/definitions/value"}}}}},
+        {"additionalProperties": false, "required": ["tag", "inner"], "properties": {"t": {"const": "tagged"}, "tag": {"type": "string", "minLength": 1}, "inner": {"$ref": "#/definitions/value"}}}
+      ]
+    },
+    "locations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["convention", "convention_revision", "spans"],
+      "properties": {
+        "convention": {"$ref": "#/definitions/slug"},
+        "convention_revision": {"type": "integer", "minimum": 1},
+        "spans": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["event_index", "start", "end"],
+            "properties": {
+              "event_index": {"type": "integer", "minimum": 0},
+              "start": {"type": "integer", "minimum": 0},
+              "end": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  }
+}

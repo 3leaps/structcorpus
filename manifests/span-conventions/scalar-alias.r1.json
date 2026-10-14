@@ -1,0 +1,12 @@
+{
+  "schema_version": "span-convention/v1",
+  "id": "scalar-alias",
+  "revision": 1,
+  "offset_unit": "utf8-byte",
+  "interval": "half-open",
+  "defined_events": ["=VAL", "=ALI"],
+  "rules": {
+    "=VAL": "From the first byte of the scalar text, including an opening quote or block indicator and excluding any anchor or tag property, to just after its last byte, including a closing quote. A block scalar ends after its last content line break, or after its indicator line when it has no content.",
+    "=ALI": "From the '*' indicator to just after the last byte of the alias name."
+  }
+}

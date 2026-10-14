@@ -35,7 +35,13 @@ If local guidance exists for this repository, read it as well.
 ```sh
 python3 tools/corpus.py validate
 python3 -m unittest discover -s tests -v
+tools/schema-check.sh        # requires goneat; also runs in CI
 ```
+
+- After editing a fixture, recompute its `sha256` and `bytes` in
+  `manifests/cases.jsonl`. Never edit a fixture to match an expectation.
+- New cases start `provisional`. Only a reviewer distinct from the author
+  marks one `reviewed`.
 
 - Tooling is Python 3.9+ standard library only. Do not add a package
   manager, requirements file, or third-party import (ADR-0002).

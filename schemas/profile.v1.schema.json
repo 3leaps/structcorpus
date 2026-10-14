@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/3leaps/structcorpus/schemas/profile.v1.schema.json",
+  "title": "structcorpus expectation profile v1 (DDR-0003)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "revision", "dialect", "scalar_schema", "policy", "cites", "description"],
+  "properties": {
+    "schema_version": {"const": "profile/v1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "dialect": {"enum": ["yaml-1.2.2"]},
+    "scalar_schema": {"enum": ["core", "json", "failsafe"]},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["duplicate_keys", "merge_keys", "integer_range", "documents", "unknown_tags"],
+      "properties": {
+        "duplicate_keys": {"enum": ["reject"]},
+        "merge_keys": {"enum": ["reject", "apply", "plain-key"]},
+        "integer_range": {"enum": ["unbounded", "i128-u128"]},
+        "documents": {"enum": ["single", "stream"]},
+        "unknown_tags": {"enum": ["tagged-str", "reject"]}
+      }
+    },
+    "cites": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "url", "revision"],
+        "properties": {
+          "title": {"type": "string", "minLength": 1},
+          "url": {"type": "string", "pattern": "^https://"},
+          "revision": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "description": {"type": "string", "minLength": 1, "maxLength": 2000}
+  }
+}
