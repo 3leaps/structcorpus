@@ -1,0 +1,22 @@
+{
+  "schema_version": "profile/v1",
+  "id": "yaml-core",
+  "revision": 1,
+  "dialect": "yaml-1.2.2",
+  "scalar_schema": "core",
+  "policy": {
+    "duplicate_keys": "reject",
+    "merge_keys": "plain-key",
+    "integer_range": "unbounded",
+    "documents": "stream",
+    "unknown_tags": "tagged-str"
+  },
+  "cites": [
+    {
+      "title": "YAML Ain't Markup Language (YAML) version 1.2",
+      "url": "https://yaml.org/spec/1.2.2/",
+      "revision": "1.2.2 (2021-10-01)"
+    }
+  ],
+  "description": "Corpus reference profile: YAML 1.2.2 Core schema resolution (section 10.3), duplicate mapping keys rejected as required by section 3.2.1.1, '<<' treated as an ordinary key (merge is not part of YAML 1.2), integers exact and unbounded, every document in the stream resolved. A scalar with a tag outside the Core schema is reported as tagged, with its text kept as a string. Floats are reported as binary64 bit patterns rounded to nearest, ties to even."
+}

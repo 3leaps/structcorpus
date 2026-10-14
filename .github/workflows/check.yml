@@ -69,3 +69,25 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Validate repository
         run: python tools/corpus.py validate
+  schemas:
+    name: schemas (goneat)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      # The digest-pinned tools image bundles goneat; nothing is installed.
+      # yamllint disable-line rule:line-length
+      image: ghcr.io/fulmenhq/goneat-tools-runner-glibc:v0.5.9@sha256:412a315241a59fc0313f4e79f182f7f373a04f194174c61b439cf8ba26174d54
+      options: --user root
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate metadata against JSON Schemas
+        run: |
+          set -euo pipefail
+          goneat --version
+          tools/schema-check.sh

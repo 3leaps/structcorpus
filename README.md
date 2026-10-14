@@ -31,9 +31,17 @@ writes a small driver that runs its own API against a pinned corpus release.
 ## Usage
 
 ```sh
-python3 tools/corpus.py validate          # repository and admission rules
+python3 tools/corpus.py validate          # repository, metadata, and case rules
 python3 -m unittest discover -s tests     # corpus-tool tests
+python3 tools/corpus.py canon FILE.json   # canonical (JCS) form of a metadata file
+tools/schema-check.sh                     # full JSON Schema check (needs goneat)
 ```
+
+Cases live in `manifests/cases.jsonl` and reference inputs under
+`fixtures/yaml/`. Profiles are in `manifests/profiles/` and span conventions
+in `manifests/span-conventions/`; the record formats are defined in
+[DDR-0003](docs/decisions/DDR-0003-case-record-and-value-notation.md) and
+`schemas/`.
 
 `hydrate` and `verify` will arrive with the first generated material, and
 `list` with the recipe ladders. See [PDR-0001](docs/decisions/PDR-0001-staged-releases.md) for the

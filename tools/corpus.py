@@ -2,14 +2,19 @@
 """structcorpus command-line tool (Python 3.9+, standard library only).
 
 Subcommands:
-  validate   Check repository rules (DDR-0001, SecDR-0001). Case-record
-             validation is added with the case schemas (DDR-0002).
+  validate   Check repository rules (DDR-0001), metadata (ADR-0002), and case
+             records (DDR-0002, DDR-0003, SecDR-0001).
+  canon      Print a JSON file in canonical form (JCS over the ADR-0002 subset).
+
+Full JSON Schema validation runs separately in CI with an external validator;
+the checks here are the admission gate a consumer can run with python3 alone.
 
 Hydrate and verify are added with the first generated material (PDR-0001,
 stage 0.1); list arrives with the recipe ladders (stage 0.2).
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -86,6 +91,50 @@ def load_json_strict(data):
     )
     _check_subset(value)
     return value
+
+
+_SHORT_ESCAPES = {0x08: "\\b", 0x09: "\\t", 0x0A: "\\n", 0x0C: "\\f", 0x0D: "\\r", 0x22: '\\"', 0x5C: "\\\\"}
+
+
+def _jcs_string(text):
+    out = ['"']
+    for ch in text:
+        code = ord(ch)
+        if code in _SHORT_ESCAPES:
+            out.append(_SHORT_ESCAPES[code])
+        elif code < 0x20:
+            out.append("\\u%04x" % code)
+        else:
+            out.append(ch)
+    out.append('"')
+    return "".join(out)
+
+
+def _utf16_key(name):
+    return name.encode("utf-16-be")
+
+
+def canonical_json(value):
+    """Serialize a metadata-subset value as RFC 8785 (JCS) text (ADR-0002)."""
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, int):
+        if not -MAX_SAFE_INT <= value <= MAX_SAFE_INT:
+            raise ValueError("integer outside the interoperable range: %d" % value)
+        return str(value)
+    if isinstance(value, str):
+        value.encode("utf-8")  # raises on lone surrogates
+        return _jcs_string(value)
+    if isinstance(value, list):
+        return "[" + ",".join(canonical_json(v) for v in value) + "]"
+    if isinstance(value, dict):
+        names = sorted(value, key=_utf16_key)
+        return "{" + ",".join(_jcs_string(k) + ":" + canonical_json(value[k]) for k in names) + "}"
+    raise ValueError("value outside the metadata subset: %s" % type(value).__name__)
 
 
 def path_problems(rel):
@@ -165,8 +214,181 @@ def check_repository(root):
     return errors
 
 
+CASE_REQUIRED = ("schema_version", "id", "revision", "format", "dialect", "category",
+                 "classifiers", "provenance", "input", "expectations", "execution", "review")
+SUPPORTED = {"case": "case/v1", "profile": "profile/v1", "span": "span-convention/v1",
+             "upstreams": "upstreams-lock/v1"}
+EVENT_RE = re.compile(r"^[+=-][A-Z]{3}( .*)?$")
+ERROR_PHASES = {"input", "syntax", "resolution", "structure", "limit", "typed"}
+
+
+def _read_json(root, rel, errors):
+    try:
+        with open(os.path.join(root, rel), "rb") as fh:
+            return load_json_strict(fh.read())
+    except (OSError, ValueError) as exc:
+        errors.append("%s: %s" % (rel, exc))
+        return None
+
+
+def _load_registry(root, sub, kind, errors):
+    """Load versioned records from manifests/<sub>/<id>.r<N>.json."""
+    out = {}
+    top = os.path.join(root, "manifests", sub)
+    if not os.path.isdir(top):
+        return out
+    for name in sorted(os.listdir(top)):
+        rel = "manifests/%s/%s" % (sub, name)
+        doc = _read_json(root, rel, errors)
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("schema_version") != SUPPORTED[kind]:
+            errors.append("%s: unsupported schema_version %r" % (rel, doc.get("schema_version")))
+            continue
+        expected = "%s.r%s.json" % (doc.get("id"), doc.get("revision"))
+        if name != expected:
+            errors.append("%s: file name must be %s" % (rel, expected))
+            continue
+        out[(doc["id"], doc["revision"])] = doc
+    return out
+
+
+def check_case(root, rec, profiles, spans, errors, where):
+    if not isinstance(rec, dict):
+        errors.append("%s: case is not an object" % where)
+        return
+    if rec.get("schema_version") != SUPPORTED["case"]:
+        errors.append("%s: unsupported schema_version %r" % (where, rec.get("schema_version")))
+        return
+    missing = [k for k in CASE_REQUIRED if k not in rec]
+    if missing:
+        errors.append("%s: missing %s" % (where, ", ".join(missing)))
+        return
+    cls = rec["classifiers"] if isinstance(rec["classifiers"], dict) else {}
+    if cls.get("sensitivity") != "0-public" or cls.get("access-tier") != "public":
+        errors.append("%s: classifiers must be exactly sensitivity=0-public, access-tier=public (SecDR-0001)" % where)
+    prov = rec["provenance"] if isinstance(rec["provenance"], dict) else {}
+    if prov.get("origin") not in ("synthetic", "public-source") or not prov.get("license"):
+        errors.append("%s: provenance needs origin synthetic|public-source and a license (SecDR-0001)" % where)
+    elif prov.get("origin") == "public-source" and not prov.get("upstream"):
+        errors.append("%s: public-source provenance needs an upstream reference" % where)
+    inp = rec["input"] if isinstance(rec["input"], dict) else {}
+    if ("path" in inp) == ("recipe" in inp):
+        errors.append("%s: input needs exactly one of path or recipe" % where)
+    elif "path" in inp:
+        rel = inp["path"]
+        if not isinstance(rel, str) or not rel.startswith("fixtures/%s/" % rec.get("format"))                 or path_problems(rel):
+            errors.append("%s: unsafe or misplaced input path %r" % (where, rel))
+        else:
+            full = os.path.join(root, *rel.split("/"))
+            if os.path.islink(full) or not os.path.isfile(full):
+                errors.append("%s: input %s is missing" % (where, rel))
+            else:
+                with open(full, "rb") as fh:
+                    data = fh.read()
+                if hashlib.sha256(data).hexdigest() != inp.get("sha256") or len(data) != inp.get("bytes"):
+                    errors.append("%s: input %s does not match recorded sha256/bytes" % (where, rel))
+    exp = rec["expectations"] if isinstance(rec["expectations"], dict) else {}
+    if not exp:
+        errors.append("%s: no expectations" % where)
+    events = exp.get("events")
+    event_list = None
+    if events is not None:
+        if events.get("status") == "valid":
+            event_list = events.get("events")
+            if not isinstance(event_list, list) or not all(isinstance(e, str) and EVENT_RE.match(e) for e in event_list):
+                errors.append("%s: valid events need an event list in yaml-test-suite notation" % where)
+                event_list = None
+        elif events.get("status") == "invalid":
+            if "events" in events:
+                errors.append("%s: invalid input must not list events" % where)
+        else:
+            errors.append("%s: events.status must be valid or invalid" % where)
+    for v in exp.get("value", []):
+        key = (v.get("profile"), v.get("profile_revision"))
+        if key not in profiles:
+            errors.append("%s: unknown profile %s r%s" % (where, key[0], key[1]))
+        err = v.get("error")
+        if err is not None and err.get("phase") not in ERROR_PHASES:
+            errors.append("%s: unknown error phase %r" % (where, err.get("phase")))
+    loc = exp.get("locations")
+    if loc is not None:
+        conv = spans.get((loc.get("convention"), loc.get("convention_revision")))
+        if conv is None:
+            errors.append("%s: unknown span convention %s r%s" % (where, loc.get("convention"), loc.get("convention_revision")))
+        elif event_list is None:
+            errors.append("%s: locations need a valid event list" % where)
+        else:
+            size = inp.get("bytes", 0)
+            for s in loc.get("spans", []):
+                i = s.get("event_index")
+                if not isinstance(i, int) or not 0 <= i < len(event_list):
+                    errors.append("%s: span event_index %r out of range" % (where, i))
+                    continue
+                if event_list[i][:4] not in conv["defined_events"]:
+                    errors.append("%s: %s spans are undefined in %s r%d" % (where, event_list[i][:4], conv["id"], conv["revision"]))
+                if not 0 <= s.get("start", -1) <= s.get("end", -1) <= size:
+                    errors.append("%s: span [%r, %r) outside input" % (where, s.get("start"), s.get("end")))
+    review = rec["review"] if isinstance(rec["review"], dict) else {}
+    if review.get("status") == "reviewed" and (not review.get("reviewer") or review.get("reviewer") == review.get("author")):
+        errors.append("%s: a reviewed case needs a reviewer distinct from its author" % where)
+
+
+def check_manifests(root):
+    errors = []
+    profiles = _load_registry(root, "profiles", "profile", errors)
+    spans = _load_registry(root, "span-conventions", "span", errors)
+    lock_rel = "manifests/upstreams.lock.json"
+    if os.path.exists(os.path.join(root, lock_rel)):
+        lock = _read_json(root, lock_rel, errors)
+        if isinstance(lock, dict) and lock.get("schema_version") != SUPPORTED["upstreams"]:
+            errors.append("%s: unsupported schema_version %r" % (lock_rel, lock.get("schema_version")))
+    rel = "manifests/cases.jsonl"
+    path = os.path.join(root, rel)
+    if not os.path.exists(path):
+        return errors
+    with open(path, "rb") as fh:
+        lines = fh.read().split(b"\n")
+    seen = set()
+    referenced = set()
+    for lineno, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        where = "%s:%d" % (rel, lineno)
+        try:
+            rec = load_json_strict(line)
+        except ValueError as exc:
+            errors.append("%s: %s" % (where, exc))
+            continue
+        cid = rec.get("id") if isinstance(rec, dict) else None
+        if not isinstance(cid, str) or not COMPONENT_RE.match(cid) or len(cid) > 100:
+            errors.append("%s: invalid case id %r" % (where, cid))
+        elif cid in seen:
+            errors.append("%s: duplicate case id %s" % (where, cid))
+        seen.add(cid)
+        check_case(root, rec, profiles, spans, errors, "%s (%s)" % (where, cid))
+        if isinstance(rec, dict) and isinstance(rec.get("input"), dict) and "path" in rec["input"]:
+            referenced.add(rec["input"]["path"])
+    fixtures = os.path.join(root, "fixtures")
+    if os.path.isdir(fixtures):
+        for full in _walk_files(fixtures):
+            frel = os.path.relpath(full, root).replace(os.sep, "/")
+            if os.path.basename(frel) in (".gitkeep", "README.md"):
+                continue
+            if frel not in referenced:
+                errors.append("%s: fixture not referenced by any case" % frel)
+    return errors
+
+
+def cmd_canon(args):
+    with open(args.file, "rb") as fh:
+        value = load_json_strict(fh.read())
+    sys.stdout.buffer.write(canonical_json(value).encode("utf-8"))
+    return 0
+
+
 def cmd_validate(args):
-    errors = check_repository(args.root)
+    errors = check_repository(args.root) + check_manifests(args.root)
     for err in errors:
         print("error: " + err, file=sys.stderr)
     if errors:
@@ -182,6 +404,9 @@ def main(argv=None):
     p_validate = sub.add_parser("validate", help="check repository rules")
     p_validate.add_argument("--root", default=ROOT, help=argparse.SUPPRESS)
     p_validate.set_defaults(func=cmd_validate)
+    p_canon = sub.add_parser("canon", help="print a JSON file in canonical form")
+    p_canon.add_argument("file")
+    p_canon.set_defaults(func=cmd_canon)
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         parser.print_help(sys.stderr)

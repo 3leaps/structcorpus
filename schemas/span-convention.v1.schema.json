@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/3leaps/structcorpus/schemas/span-convention.v1.schema.json",
+  "title": "structcorpus span convention v1 (DDR-0003)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "revision", "offset_unit", "interval", "defined_events", "rules"],
+  "properties": {
+    "schema_version": {"const": "span-convention/v1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "offset_unit": {"const": "utf8-byte"},
+    "interval": {"const": "half-open"},
+    "defined_events": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["=VAL", "=ALI", "+SEQ", "-SEQ", "+MAP", "-MAP", "+DOC", "-DOC", "+STR", "-STR"]}},
+    "rules": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "minLength": 1}}
+  }
+}

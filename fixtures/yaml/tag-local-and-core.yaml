@@ -1,0 +1,2 @@
+value: !local 42
+explicit: !!str 7

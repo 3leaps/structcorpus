@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/3leaps/structcorpus/schemas/upstreams-lock.v1.schema.json",
+  "title": "structcorpus upstream pins v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "upstreams"],
+  "properties": {
+    "schema_version": {"const": "upstreams-lock/v1"},
+    "upstreams": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["url", "ref", "commit", "license", "use"],
+        "properties": {
+          "url": {"type": "string", "pattern": "^https://"},
+          "ref": {"type": "string", "minLength": 1},
+          "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "license": {"type": "string", "minLength": 1},
+          "use": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -6,7 +6,9 @@ Release stages are defined in
 | Area | Status |
 | --- | --- |
 | Repository rules validator (names, sizes, byte-exact attributes, strict JSON) | Implemented |
-| Case and profile schemas (DDR-0002) | Planned, 0.1 |
+| Case, profile, span-convention, and upstream-lock schemas (DDR-0003) | Implemented |
+| Canonical JSON (JCS subset) serializer | Implemented |
+| Example cases: one per expectation layer, all `provisional` | Implemented (8) |
 | YAML scalar resolution and duplicate-key truth generator | Planned, 0.1 |
 | YAML hand-checked goldens and wire cases | Planned, 0.1 |
 | YAML adversarial families and bounded recipes | Planned, 0.2 |
