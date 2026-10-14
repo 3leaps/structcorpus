@@ -1,0 +1,11 @@
+# Lint and format policy for the standard-library tooling (ADR-0002).
+target-version = "py39"
+line-length = 120
+extend-exclude = ["fixtures", "expected"]
+
+[lint]
+# Correctness-focused: pycodestyle errors and warnings, pyflakes, bugbear, imports.
+select = ["E", "F", "W", "B", "I"]
+
+[format]
+quote-style = "double"

@@ -1,0 +1,12 @@
+formatter:
+  type: basic
+  indent: 2
+  line_ending: lf
+  # Match goneat's inline-comment padding so direct yamlfmt and goneat agree.
+  pad_line_comments: 2
+  retain_line_breaks_single: true
+
+exclude:
+  - .git/**
+  - fixtures/**
+  - expected/**

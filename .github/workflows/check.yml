@@ -73,12 +73,13 @@ jobs:
         run: python tools/corpus.py validate
       - name: Hydrate twice and compare
         run: python tools/hydrate-twice.py conformance
-  schemas:
-    name: schemas (goneat)
+  goneat:
+    name: format, lint, schemas (goneat)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
-      # The digest-pinned tools image bundles goneat; nothing is installed.
+      # The digest-pinned tools image bundles goneat, ruff, yamllint, yamlfmt,
+      # shfmt, actionlint, and checkmake; nothing is installed.
       # yamllint disable-line rule:line-length
       image: ghcr.io/fulmenhq/goneat-tools-runner-glibc:v0.5.9@sha256:412a315241a59fc0313f4e79f182f7f373a04f194174c61b439cf8ba26174d54
       options: --user root
@@ -90,8 +91,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: Validate metadata against JSON Schemas
+      - name: Trust the container checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Show toolchain
+        run: |
+          goneat --version
+          ruff --version
+      - name: Record fixture bytes
+        run: find fixtures -type f -exec sha256sum {} + | sort > "$RUNNER_TEMP/fixtures.before"
+      - name: Check formatting
+        run: make fmt-check
+      - name: Lint
+        run: make lint
+      - name: Validate schemas and metadata
+        run: make schemas
+      - name: Prove formatting never rewrites fixtures
         run: |
           set -euo pipefail
-          goneat --version
-          tools/schema-check.sh
+          make fmt
+          find fixtures -type f -exec sha256sum {} + | sort > "$RUNNER_TEMP/fixtures.after"
+          diff "$RUNNER_TEMP/fixtures.before" "$RUNNER_TEMP/fixtures.after"
+          git diff --exit-code

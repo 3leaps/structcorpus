@@ -32,7 +32,7 @@ INT_HEX = re.compile(r"0x[0-9a-fA-F]+\Z")
 FLOAT = re.compile(r"[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?\Z")
 INF = re.compile(r"[-+]?(\.inf|\.Inf|\.INF)\Z")
 NAN = re.compile(r"(\.nan|\.NaN|\.NAN)\Z")
-I128_MIN, U128_MAX = -(2 ** 127), 2 ** 128 - 1
+I128_MIN, U128_MAX = -(2**127), 2**128 - 1
 
 
 class Fail(Exception):
@@ -135,10 +135,18 @@ def resolve(text, plain, tag):
 
 
 # ---- typed conversion (spec 8) ----------------------------------------------
-INT_TARGETS = [("u8", 0, 2 ** 8 - 1), ("u16", 0, 2 ** 16 - 1), ("u32", 0, 2 ** 32 - 1),
-               ("u64", 0, 2 ** 64 - 1), ("u128", 0, U128_MAX), ("i8", -(2 ** 7), 2 ** 7 - 1),
-               ("i16", -(2 ** 15), 2 ** 15 - 1), ("i32", -(2 ** 31), 2 ** 31 - 1),
-               ("i64", -(2 ** 63), 2 ** 63 - 1), ("i128", I128_MIN, 2 ** 127 - 1)]
+INT_TARGETS = [
+    ("u8", 0, 2**8 - 1),
+    ("u16", 0, 2**16 - 1),
+    ("u32", 0, 2**32 - 1),
+    ("u64", 0, 2**64 - 1),
+    ("u128", 0, U128_MAX),
+    ("i8", -(2**7), 2**7 - 1),
+    ("i16", -(2**15), 2**15 - 1),
+    ("i32", -(2**31), 2**31 - 1),
+    ("i64", -(2**63), 2**63 - 1),
+    ("i128", I128_MIN, 2**127 - 1),
+]
 TYPE_ERROR = {"phase": "typed", "kind": "type"}
 
 
@@ -215,13 +223,36 @@ for _w in ["true", "false", "null", "y", "yes", "n", "no", "on", "off"]:
     WORDS += case_variants(_w)
 WORDS += ["~", "", "1", "0"]
 
-STYLES = ["plain", "single", "double", "literal", "literal_strip", "literal_keep",
-          "folded", "folded_strip", "folded_keep"]
-BLOCK = {"literal": "|", "literal_strip": "|-", "literal_keep": "|+",
-         "folded": ">", "folded_strip": ">-", "folded_keep": ">+"}
+STYLES = [
+    "plain",
+    "single",
+    "double",
+    "literal",
+    "literal_strip",
+    "literal_keep",
+    "folded",
+    "folded_strip",
+    "folded_keep",
+]
+BLOCK = {
+    "literal": "|",
+    "literal_strip": "|-",
+    "literal_keep": "|+",
+    "folded": ">",
+    "folded_strip": ">-",
+    "folded_keep": ">+",
+}
 TAGS = [None, "!!bool", "!!str", "!!null", "!", "!custom"]
-POSITIONS = ["block_value", "block_implicit_key", "block_explicit_key", "block_seq",
-             "flow_seq", "flow_key", "flow_value", "top"]
+POSITIONS = [
+    "block_value",
+    "block_implicit_key",
+    "block_explicit_key",
+    "block_seq",
+    "flow_seq",
+    "flow_key",
+    "flow_value",
+    "top",
+]
 KEY_POSITIONS = {"block_implicit_key", "block_explicit_key", "flow_key"}
 FLOW_POSITIONS = {"flow_seq", "flow_key", "flow_value"}
 
@@ -252,18 +283,33 @@ def document(word, style, tag, pos):
         head = block_head(style, tag)
         if pos in FLOW_POSITIONS or pos == "block_implicit_key":
             # Block scalars cannot appear in flow context or as implicit keys.
-            y = {"flow_seq": "[%s\n  %s\n]\n", "flow_key": "{%s\n  %s\n: v}\n",
-                 "flow_value": "{k: %s\n  %s\n}\n", "block_implicit_key": "%s\n  %s\n: v\n"}[pos]
+            y = {
+                "flow_seq": "[%s\n  %s\n]\n",
+                "flow_key": "{%s\n  %s\n: v}\n",
+                "flow_value": "{k: %s\n  %s\n}\n",
+                "block_implicit_key": "%s\n  %s\n: v\n",
+            }[pos]
             return y % (head, word), False
-        y = {"block_value": "k: %s\n  %s\n", "block_explicit_key": "? %s\n  %s\n: v\n",
-             "block_seq": "- %s\n  %s\n", "top": "%s\n  %s\n"}[pos]
+        y = {
+            "block_value": "k: %s\n  %s\n",
+            "block_explicit_key": "? %s\n  %s\n: v\n",
+            "block_seq": "- %s\n  %s\n",
+            "top": "%s\n  %s\n",
+        }[pos]
         return y % (head, word), True
     s = inline(word, style, tag)
     if style == "plain" and word == "" and tag:
         s = tag  # tag with empty plain content
-    y = {"block_value": "k: %s\n", "block_implicit_key": "%s: v\n", "block_explicit_key": "? %s\n: v\n",
-         "block_seq": "- %s\n", "flow_seq": "[%s]\n", "flow_key": "{%s: v}\n",
-         "flow_value": "{k: %s}\n", "top": "%s\n"}[pos]
+    y = {
+        "block_value": "k: %s\n",
+        "block_implicit_key": "%s: v\n",
+        "block_explicit_key": "? %s\n: v\n",
+        "block_seq": "- %s\n",
+        "flow_seq": "[%s]\n",
+        "flow_key": "{%s: v}\n",
+        "flow_value": "{k: %s}\n",
+        "top": "%s\n",
+    }[pos]
     return y % s, True
 
 
@@ -303,8 +349,13 @@ def gen_booleans(typed=False):
         try:
             v = resolve(text, style == "plain", tag)
         except Fail as f:
-            yield rid, "scalar-resolution", y, {"error": f.error}, \
-                typed_entries(["k"], BOOL_TARGETS, failure=f.error) if probe else []
+            yield (
+                rid,
+                "scalar-resolution",
+                y,
+                {"error": f.error},
+                typed_entries(["k"], BOOL_TARGETS, failure=f.error) if probe else [],
+            )
             continue
         # A retained tag is neither bool, str, nor null, so it never converts here (spec 8).
         entries = typed_entries(["k"], BOOL_TARGETS, resolved=v) if probe else []
@@ -328,17 +379,82 @@ def gen_collisions():
 
 # ---- numbers ----------------------------------------------------------------
 NUM_TEXTS = [
-    "0", "1", "-1", "+1", "007", "-0", "+0", "0o17", "0o8", "0x1F", "0xff", "0XFF", "-0x1", "0b101",
-    "1_000", "1.0", "1.", ".5", "-.5", "1e3", "1E3", "1e+3", "1.5e-3", "-0.0", "0.0", "1e9999", "-1e9999",
-    "1e-400", "2.5e-324", "4.9e-324", "3.4028235e38", "3.5e38", "1e39", "16777217", "9007199254740993",
-    ".inf", "-.inf", "+.inf", ".Inf", ".INF", ".nan", ".NaN", ".NAN", "inf", "nan", "-.nan",
-    "127", "128", "-128", "-129", "255", "256", "65535", "65536", "4294967295", "4294967296",
-    "18446744073709551615", "18446744073709551616", "-9223372036854775808", "-9223372036854775809",
-    str(U128_MAX), str(U128_MAX + 1), str(I128_MIN), str(I128_MIN - 1),
-    str(2 ** 127 - 1), str(2 ** 127), "1:20", "0755",
+    "0",
+    "1",
+    "-1",
+    "+1",
+    "007",
+    "-0",
+    "+0",
+    "0o17",
+    "0o8",
+    "0x1F",
+    "0xff",
+    "0XFF",
+    "-0x1",
+    "0b101",
+    "1_000",
+    "1.0",
+    "1.",
+    ".5",
+    "-.5",
+    "1e3",
+    "1E3",
+    "1e+3",
+    "1.5e-3",
+    "-0.0",
+    "0.0",
+    "1e9999",
+    "-1e9999",
+    "1e-400",
+    "2.5e-324",
+    "4.9e-324",
+    "3.4028235e38",
+    "3.5e38",
+    "1e39",
+    "16777217",
+    "9007199254740993",
+    ".inf",
+    "-.inf",
+    "+.inf",
+    ".Inf",
+    ".INF",
+    ".nan",
+    ".NaN",
+    ".NAN",
+    "inf",
+    "nan",
+    "-.nan",
+    "127",
+    "128",
+    "-128",
+    "-129",
+    "255",
+    "256",
+    "65535",
+    "65536",
+    "4294967295",
+    "4294967296",
+    "18446744073709551615",
+    "18446744073709551616",
+    "-9223372036854775808",
+    "-9223372036854775809",
+    str(U128_MAX),
+    str(U128_MAX + 1),
+    str(I128_MIN),
+    str(I128_MIN - 1),
+    str(2**127 - 1),
+    str(2**127),
+    "1:20",
+    "0755",
     # binary32 overflow threshold 2^128 - 2^103 and its neighbors, both signs (spec 8)
-    "3.4028234663852886e38", "-3.4028235e38", "3.4028235677973362e38", "3.4028235677973366e38",
-    "-3.4028235677973362e38", "-3.4028235677973366e38", "3.4028236e38",
+    "3.4028234663852886e38",
+    "-3.4028235e38",
+    "3.4028235677973362e38",
+    "3.4028235677973366e38",
+    "-3.4028235677973362e38",
+    "-3.4028235677973366e38",
+    "3.4028236e38",
 ]
 NUM_FORMS = [("plain", None), ("double", None), ("double", "!!int"), ("plain", "!!float"), ("plain", "!!str")]
 
@@ -356,11 +472,21 @@ def gen_numbers(typed=False):
             try:
                 v = resolve(t, style == "plain", tag)
             except Fail as f:
-                yield rid, "numeric-resolution", y, {"error": f.error}, \
-                    typed_entries(["k"], NUM_TARGETS, failure=f.error) if typed else []
+                yield (
+                    rid,
+                    "numeric-resolution",
+                    y,
+                    {"error": f.error},
+                    typed_entries(["k"], NUM_TARGETS, failure=f.error) if typed else [],
+                )
                 continue
-            yield rid, "numeric-resolution", y, {"documents": [wrap("block_value", v)]}, \
-                typed_entries(["k"], NUM_TARGETS, resolved=v) if typed else []
+            yield (
+                rid,
+                "numeric-resolution",
+                y,
+                {"documents": [wrap("block_value", v)]},
+                typed_entries(["k"], NUM_TARGETS, resolved=v) if typed else [],
+            )
 
 
 FAMILIES = {"booleans": gen_booleans, "collisions": gen_collisions, "numbers": gen_numbers}

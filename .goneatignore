@@ -1,0 +1,5 @@
+# Byte-exact corpus material (DDR-0001): never format, lint, or rewrite.
+fixtures/**
+expected/**
+# Negative schema controls are deliberately invalid documents.
+tests/schema-negative/**

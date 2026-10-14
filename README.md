@@ -32,12 +32,16 @@ writes a small driver that runs its own API against a pinned corpus release.
 
 ```sh
 python3 tools/corpus.py validate          # repository, metadata, and case rules
-python3 -m unittest discover -s tests     # corpus-tool tests
-python3 tools/corpus.py canon FILE.json   # canonical (JCS) form of a metadata file
-tools/schema-check.sh                     # full JSON Schema check (needs goneat)
 python3 tools/corpus.py hydrate --tier conformance --output /tmp/structcorpus-out
 python3 tools/corpus.py verify --root /tmp/structcorpus-out
+python3 tools/corpus.py canon FILE.json   # canonical (JCS) form of a metadata file
 ```
+
+Maintainers run `make check` for everything non-mutating: formatting, lint,
+JSON Schema validation, tests, and a double hydration. Format, lint, and
+schema checks use [goneat](https://github.com/fulmenhq/goneat)
+([PDR-0002](docs/decisions/PDR-0002-goneat-maintainer-toolchain.md)). Consumers
+need only `python3`.
 
 Large tables are generated, not committed: each recipe under `recipes/` pins
 its generator, parameters, case count, and a digest of the exact output

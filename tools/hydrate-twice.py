@@ -11,7 +11,9 @@ tier = sys.argv[1] if len(sys.argv) > 1 else "conformance"
 with tempfile.TemporaryDirectory() as tmp:
     outs = [os.path.join(tmp, name) for name in ("a", "b")]
     for out in outs:
-        subprocess.run([sys.executable, os.path.join(HERE, "corpus.py"), "hydrate", "--tier", tier, "--output", out], check=True)
+        subprocess.run(
+            [sys.executable, os.path.join(HERE, "corpus.py"), "hydrate", "--tier", tier, "--output", out], check=True
+        )
         subprocess.run([sys.executable, os.path.join(HERE, "corpus.py"), "verify", "--root", out], check=True)
     files = 0
     for dirpath, _, names in os.walk(outs[0]):

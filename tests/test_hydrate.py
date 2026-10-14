@@ -14,13 +14,13 @@ sys.path.insert(0, os.path.join(REPO, "tools"))
 
 import corpus  # noqa: E402
 
-GEN = '''
+GEN = """
 def generate(parameters):
     n = parameters["n"]
     size = parameters.get("size", 1)
     for i in range(n):
         yield "r%04d" % i, "scalar-resolution", "k: " + "x" * size + "\\n", {"documents": [{"t": "str", "v": "x"}]}, []
-'''
+"""
 
 
 class RecipeRepo(unittest.TestCase):
@@ -36,8 +36,9 @@ class RecipeRepo(unittest.TestCase):
         os.makedirs(os.path.join(self.root, "recipes", "yaml"))
         with open(os.path.join(self.root, "generators", "yaml", "tiny.py"), "w") as fh:
             fh.write(GEN)
-        template = sorted(n for n in os.listdir(os.path.join(REPO, "recipes", "yaml"))
-                          if n.startswith("core-truth-numbers."))[-1]
+        template = sorted(
+            n for n in os.listdir(os.path.join(REPO, "recipes", "yaml")) if n.startswith("core-truth-numbers.")
+        )[-1]
         with open(os.path.join(REPO, "recipes", "yaml", template)) as fh:
             self.recipe = json.load(fh)
         self.recipe.update(id="tiny", revision=1, generator="generators/yaml/tiny.py", parameters={"n": 5})
@@ -179,8 +180,10 @@ class TestHydrate(RecipeRepo):
         self.recipe.update(id="tiny2")
         self.save_as = os.path.join(self.root, "recipes", "yaml", "tiny2.r1.json")
         self.pin_to(self.save_as)
-        per_recipe = sum(len(d) + len(l) + 1 for _, d, _r, l in
-                         corpus._recipe_cases(self.root, "recipes/yaml/tiny2.r1.json", self.recipe))
+        per_recipe = sum(
+            len(d) + len(line) + 1
+            for _, d, _r, line in corpus._recipe_cases(self.root, "recipes/yaml/tiny2.r1.json", self.recipe)
+        )
         saved = corpus.TIER_CAPS["smoke"]
         cap = per_recipe + per_recipe // 2  # one recipe fits; two do not
         corpus.TIER_CAPS["smoke"] = cap
@@ -340,15 +343,19 @@ class TestRecipeValidation(RecipeRepo):
     def test_generator_outside_tree(self):
         # The file exists, so only the generators/<format>/ prefix rule can reject it.
         os.makedirs(os.path.join(self.root, "tools"))
-        shutil.copy(os.path.join(self.root, "generators", "yaml", "tiny.py"), os.path.join(self.root, "tools", "tiny.py"))
+        shutil.copy(
+            os.path.join(self.root, "generators", "yaml", "tiny.py"), os.path.join(self.root, "tools", "tiny.py")
+        )
         self.recipe["generator"] = "tools/tiny.py"
         self.save()
         self.assertRejected("missing or misplaced")
 
     def test_generator_unportable_name(self):
         # The file exists under the right prefix; only the portable-name rule can reject it.
-        shutil.copy(os.path.join(self.root, "generators", "yaml", "tiny.py"),
-                    os.path.join(self.root, "generators", "yaml", "con.py"))
+        shutil.copy(
+            os.path.join(self.root, "generators", "yaml", "tiny.py"),
+            os.path.join(self.root, "generators", "yaml", "con.py"),
+        )
         self.recipe["generator"] = "generators/yaml/con.py"
         self.save()
         self.assertRejected("missing or misplaced")

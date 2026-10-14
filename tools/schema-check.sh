@@ -7,7 +7,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-check() {  # check <schema> <data> <expect: pass|fail>
+check() { # check <schema> <data> <expect: pass|fail>
   if goneat validate data --schema-file "$root/schemas/$1" --data "$2" >"$work/out" 2>&1; then
     got=pass
   else

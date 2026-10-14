@@ -30,14 +30,12 @@ MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
 MAX_PATH_CHARS = 200
 BYTE_EXACT_TREES = ("fixtures", "expected")
 BYTE_EXACT_ATTRS = "-text -filter -ident -working-tree-encoding"
-MAX_SAFE_INT = 2 ** 53 - 1
+MAX_SAFE_INT = 2**53 - 1
 FORBIDDEN_DIRS = {"unknown", "pending", "quarantine", "staging", "intake"}
 
 COMPONENT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 RESERVED_STEMS = (
-    {"con", "prn", "aux", "nul"}
-    | {"com%d" % i for i in range(1, 10)}
-    | {"lpt%d" % i for i in range(1, 10)}
+    {"con", "prn", "aux", "nul"} | {"com%d" % i for i in range(1, 10)} | {"lpt%d" % i for i in range(1, 10)}
 )
 
 
@@ -65,7 +63,7 @@ def _check_subset(value):
         try:
             value.encode("utf-8")
         except UnicodeEncodeError:
-            raise ValueError("string contains a lone surrogate")
+            raise ValueError("string contains a lone surrogate") from None
     elif isinstance(value, list):
         for item in value:
             _check_subset(item)
@@ -217,17 +215,50 @@ def check_repository(root):
     return errors
 
 
-CASE_REQUIRED = ("schema_version", "id", "revision", "format", "dialect", "category",
-                 "classifiers", "provenance", "input", "expectations", "execution", "review")
-SUPPORTED = {"case": "case/v1", "profile": "profile/v1", "span": "span-convention/v1",
-             "upstreams": "upstreams-lock/v1", "recipe": "recipe/v1", "hydrated": "hydrated/v1"}
+CASE_REQUIRED = (
+    "schema_version",
+    "id",
+    "revision",
+    "format",
+    "dialect",
+    "category",
+    "classifiers",
+    "provenance",
+    "input",
+    "expectations",
+    "execution",
+    "review",
+)
+SUPPORTED = {
+    "case": "case/v1",
+    "profile": "profile/v1",
+    "span": "span-convention/v1",
+    "upstreams": "upstreams-lock/v1",
+    "recipe": "recipe/v1",
+    "hydrated": "hydrated/v1",
+}
 TIER_CAPS = {"smoke": 16 * 1024 * 1024, "conformance": 128 * 1024 * 1024, "stress": 256 * 1024 * 1024}
 TIER_ORDER = ("smoke", "conformance", "stress")
 HYDRATE_MARKER = ".structcorpus-hydrated.json"
 EVENT_RE = re.compile(r"^[+=-][A-Z]{3}( .*)?$")
 ERROR_PHASES = {"input", "syntax", "resolution", "structure", "limit", "typed"}
-TYPED_TARGETS = {"u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128",
-                 "f32", "f64", "bool", "string", "option-bool"}
+TYPED_TARGETS = {
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "u128",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "i128",
+    "f32",
+    "f64",
+    "bool",
+    "string",
+    "option-bool",
+}
 
 
 def _read_json(root, rel, errors):
@@ -285,7 +316,7 @@ def check_case(root, rec, profiles, spans, errors, where):
         errors.append("%s: input needs exactly one of path or recipe" % where)
     elif "path" in inp:
         rel = inp["path"]
-        if not isinstance(rel, str) or not rel.startswith("fixtures/%s/" % rec.get("format"))                 or path_problems(rel):
+        if not isinstance(rel, str) or not rel.startswith("fixtures/%s/" % rec.get("format")) or path_problems(rel):
             errors.append("%s: unsafe or misplaced input path %r" % (where, rel))
         else:
             full = os.path.join(root, *rel.split("/"))
@@ -304,7 +335,9 @@ def check_case(root, rec, profiles, spans, errors, where):
     if events is not None:
         if events.get("status") == "valid":
             event_list = events.get("events")
-            if not isinstance(event_list, list) or not all(isinstance(e, str) and EVENT_RE.match(e) for e in event_list):
+            if not isinstance(event_list, list) or not all(
+                isinstance(e, str) and EVENT_RE.match(e) for e in event_list
+            ):
                 errors.append("%s: valid events need an event list in yaml-test-suite notation" % where)
                 event_list = None
         elif events.get("status") == "invalid":
@@ -329,13 +362,17 @@ def check_case(root, rec, profiles, spans, errors, where):
         elif "error" in t and t["error"].get("phase") not in ERROR_PHASES:
             errors.append("%s: unknown error phase %r" % (where, t["error"].get("phase")))
         path = t.get("path")
-        if not isinstance(path, list) or not all(isinstance(p, str) or (isinstance(p, int) and not isinstance(p, bool) and p >= 0) for p in path):
+        if not isinstance(path, list) or not all(
+            isinstance(p, str) or (isinstance(p, int) and not isinstance(p, bool) and p >= 0) for p in path
+        ):
             errors.append("%s: typed path must list mapping keys and sequence indexes" % where)
     loc = exp.get("locations")
     if loc is not None:
         conv = spans.get((loc.get("convention"), loc.get("convention_revision")))
         if conv is None:
-            errors.append("%s: unknown span convention %s r%s" % (where, loc.get("convention"), loc.get("convention_revision")))
+            errors.append(
+                "%s: unknown span convention %s r%s" % (where, loc.get("convention"), loc.get("convention_revision"))
+            )
         elif event_list is None:
             errors.append("%s: locations need a valid event list" % where)
         else:
@@ -346,11 +383,16 @@ def check_case(root, rec, profiles, spans, errors, where):
                     errors.append("%s: span event_index %r out of range" % (where, i))
                     continue
                 if event_list[i][:4] not in conv["defined_events"]:
-                    errors.append("%s: %s spans are undefined in %s r%d" % (where, event_list[i][:4], conv["id"], conv["revision"]))
+                    errors.append(
+                        "%s: %s spans are undefined in %s r%d"
+                        % (where, event_list[i][:4], conv["id"], conv["revision"])
+                    )
                 if not 0 <= s.get("start", -1) <= s.get("end", -1) <= size:
                     errors.append("%s: span [%r, %r) outside input" % (where, s.get("start"), s.get("end")))
     review = rec["review"] if isinstance(rec["review"], dict) else {}
-    if review.get("status") == "reviewed" and (not review.get("reviewer") or review.get("reviewer") == review.get("author")):
+    if review.get("status") == "reviewed" and (
+        not review.get("reviewer") or review.get("reviewer") == review.get("author")
+    ):
         errors.append("%s: a reviewed case needs a reviewer distinct from its author" % where)
 
 
@@ -402,6 +444,7 @@ def check_manifests(root):
 
 # ---- recipes, hydration, verification (DDR-0004) -----------------------------
 
+
 def _load_generator(root, rel):
     path = os.path.join(root, *rel.split("/"))
     spec = importlib.util.spec_from_file_location("structcorpus_gen_" + os.path.basename(rel)[:-3], path)
@@ -443,18 +486,28 @@ def check_recipe(root, rel, doc, profiles, errors):
     if (doc.get("profile"), doc.get("profile_revision")) not in profiles:
         errors.append("%s: unknown profile %s r%s" % (rel, doc.get("profile"), doc.get("profile_revision")))
     gen = doc.get("generator")
-    if not isinstance(gen, str) or not gen.startswith("generators/%s/" % doc.get("format")) \
-            or path_problems(gen) or not os.path.isfile(os.path.join(root, *gen.split("/"))):
+    if (
+        not isinstance(gen, str)
+        or not gen.startswith("generators/%s/" % doc.get("format"))
+        or path_problems(gen)
+        or not os.path.isfile(os.path.join(root, *gen.split("/")))
+    ):
         errors.append("%s: generator %r is missing or misplaced" % (rel, gen))
     ex = doc.get("execution") if isinstance(doc.get("execution"), dict) else {}
     exp = doc.get("expected") if isinstance(doc.get("expected"), dict) else {}
     cap = TIER_CAPS.get(ex.get("tier"))
     if cap is None or not isinstance(ex.get("max_output_bytes"), int) or ex["max_output_bytes"] > cap:
         errors.append("%s: max_output_bytes must be set and within the %s tier cap" % (rel, ex.get("tier")))
-    if not isinstance(exp.get("cases"), int) or not isinstance(ex.get("max_cases"), int) or exp["cases"] > ex["max_cases"]:
+    if (
+        not isinstance(exp.get("cases"), int)
+        or not isinstance(ex.get("max_cases"), int)
+        or exp["cases"] > ex["max_cases"]
+    ):
         errors.append("%s: expected.cases must not exceed execution.max_cases" % rel)
     review = doc.get("review") if isinstance(doc.get("review"), dict) else {}
-    if review.get("status") == "reviewed" and (not review.get("reviewer") or review.get("reviewer") == review.get("author")):
+    if review.get("status") == "reviewed" and (
+        not review.get("reviewer") or review.get("reviewer") == review.get("author")
+    ):
         errors.append("%s: a reviewed recipe needs a reviewer distinct from its author" % rel)
 
 
@@ -487,9 +540,14 @@ def _recipe_cases(root, rel, doc):
         if typed:
             expectations["typed"] = [dict(entry, **bind) for entry in typed]
         record = {
-            "schema_version": SUPPORTED["case"], "id": cid, "revision": doc["revision"],
-            "format": doc["format"], "dialect": doc["dialect"], "category": category,
-            "classifiers": doc["classifiers"], "provenance": doc["provenance"],
+            "schema_version": SUPPORTED["case"],
+            "id": cid,
+            "revision": doc["revision"],
+            "format": doc["format"],
+            "dialect": doc["dialect"],
+            "category": category,
+            "classifiers": doc["classifiers"],
+            "provenance": doc["provenance"],
             "input": {"recipe": rel, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)},
             "expectations": expectations,
             "execution": {"tier": doc["execution"]["tier"], "hazards": []},
@@ -527,9 +585,12 @@ def hydrate(root, out, tier, recipe_filter=None):
     parent = os.path.dirname(os.path.abspath(out)) or "."
     if not os.path.isdir(parent):
         raise HydrateError("parent directory does not exist: %s" % parent)
-    allowed = TIER_ORDER[:TIER_ORDER.index(tier) + 1]
-    selected = sorted(rel for rel, doc in recipes.items()
-                      if doc["execution"]["tier"] in allowed and (recipe_filter is None or doc["id"] in recipe_filter))
+    allowed = TIER_ORDER[: TIER_ORDER.index(tier) + 1]
+    selected = sorted(
+        rel
+        for rel, doc in recipes.items()
+        if doc["execution"]["tier"] in allowed and (recipe_filter is None or doc["id"] in recipe_filter)
+    )
     work = tempfile.mkdtemp(prefix=".structcorpus-", dir=parent)
     try:
         summary = _hydrate_into(root, work, recipes, selected, tier)
@@ -565,7 +626,7 @@ def _hydrate_into(root, work, recipes, selected, tier):
             doc = recipes[rel]
             lines = []
             in_bytes = 0
-            for cid, data, record, line in _recipe_cases(root, rel, doc):
+            for cid, data, _record, line in _recipe_cases(root, rel, doc):
                 written += len(data) + len(line) + 1  # inputs and manifest both count
                 if written > budget:
                     raise HydrateError("aggregate output exceeds the %s cap %d bytes" % (tier, budget))
@@ -579,8 +640,10 @@ def _hydrate_into(root, work, recipes, selected, tier):
             digest = recipe_digest(lines)
             exp = doc["expected"]
             if (len(lines), in_bytes, digest) != (exp["cases"], exp["input_bytes"], exp["digest"]):
-                raise HydrateError("%s: output does not match recorded expected counts/digest "
-                                   "(got cases=%d input_bytes=%d %s)" % (rel, len(lines), in_bytes, digest))
+                raise HydrateError(
+                    "%s: output does not match recorded expected counts/digest "
+                    "(got cases=%d input_bytes=%d %s)" % (rel, len(lines), in_bytes, digest)
+                )
             summary["recipes"].append({"recipe": rel, "cases": len(lines), "input_bytes": in_bytes, "digest": digest})
     summary["output_bytes"] = written
     with open(os.path.join(work, HYDRATE_MARKER), "wb") as fh:
@@ -623,8 +686,11 @@ def verify(root, out):
     # manifest, never decide what gets checked. Every recipe present in the
     # manifest is verified against the checkout's recorded digest.
     listed = summary.get("recipes")
-    listed_rels = [e.get("recipe") for e in listed] if isinstance(listed, list) and \
-        all(isinstance(e, dict) for e in listed) else None
+    listed_rels = (
+        [e.get("recipe") for e in listed]
+        if isinstance(listed, list) and all(isinstance(e, dict) for e in listed)
+        else None
+    )
     if listed_rels is None or sorted(listed_rels) != sorted(by_recipe) or len(set(listed_rels)) != len(listed_rels):
         errors.append("marker recipe list does not match the recipes in the manifest")
     if not by_recipe:

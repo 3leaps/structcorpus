@@ -28,6 +28,7 @@ and its [normative catalog](https://github.com/3leaps/crucible/blob/fc6c49a3a1dd
 | [SecDR-0001](SecDR-0001-public-only-admission.md) | Public-only admission and classification compliance | Proposed |
 | [SecDR-0002](SecDR-0002-bounded-execution-containment.md) | Bounded execution and memory containment for hostile cases | Proposed |
 | [PDR-0001](PDR-0001-staged-releases.md) | Staged releases, each with its own acceptance list | Proposed |
+| [PDR-0002](PDR-0002-goneat-maintainer-toolchain.md) | goneat as the maintainer format, lint, and schema toolchain | Proposed |
 
 Reviewers: any change that adds or modifies a case is checked against
 SecDR-0001. Any change to execution tooling is checked against SecDR-0002.
