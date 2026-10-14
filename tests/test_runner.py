@@ -10,7 +10,6 @@ import os
 import stat
 import sys
 import tempfile
-import threading
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,23 +47,34 @@ class TestClassify(unittest.TestCase):
             self.assertIn(runner.classify(r), runner.OUTCOMES)
 
 
-class TestReadCapped(unittest.TestCase):
+class TestOutputBudget(unittest.TestCase):
+    def read(self, data, budget):
+        sink = {}
+        runner._read_capped(io.BytesIO(data), budget, sink)
+        return sink["data"]
+
     def test_keeps_cap_counts_excess_and_signals(self):
-        sink, overflow = {}, threading.Event()
-        runner._read_capped(io.BytesIO(b"a" * 100), 10, sink, overflow)
-        self.assertEqual(sink["data"], b"a" * 10)
-        self.assertEqual(sink["excess"], 90)
-        self.assertTrue(overflow.is_set())
+        b = runner.OutputBudget(10)
+        self.assertEqual(self.read(b"a" * 100, b), b"a" * 10)
+        self.assertEqual((b.excess, b.overflow.is_set()), (90, True))
 
     def test_under_cap(self):
-        sink, overflow = {}, threading.Event()
-        runner._read_capped(io.BytesIO(b"abc"), 10, sink, overflow)
-        self.assertEqual((sink["data"], sink["excess"], overflow.is_set()), (b"abc", 0, False))
+        b = runner.OutputBudget(10)
+        self.assertEqual(self.read(b"abc", b), b"abc")
+        self.assertEqual((b.excess, b.overflow.is_set()), (0, False))
 
     def test_exactly_at_cap_is_not_overflow(self):
-        sink, overflow = {}, threading.Event()
-        runner._read_capped(io.BytesIO(b"x" * 10), 10, sink, overflow)
-        self.assertEqual((sink["excess"], overflow.is_set()), (0, False))
+        b = runner.OutputBudget(10)
+        self.read(b"x" * 10, b)
+        self.assertEqual((b.excess, b.overflow.is_set()), (0, False))
+
+    def test_budget_is_shared_across_streams(self):
+        # stdout and stderr draw from one budget: the documented cap is the total.
+        b = runner.OutputBudget(10)
+        out = self.read(b"o" * 6, b)
+        err = self.read(b"e" * 6, b)
+        self.assertEqual(len(out) + len(err), 10)
+        self.assertEqual((b.excess, b.overflow.is_set()), (2, True))
 
 
 class FakeRuntime(unittest.TestCase):
@@ -133,6 +143,15 @@ class TestBlocked(FakeRuntime):
         with self.assertRaises(runner.Blocked) as ctx:
             runner.check_containment(rt)
         self.assertIn("out of storage", str(ctx.exception))
+
+    def test_cleanup_filters_by_runner_label(self):
+        # cleanup must ask the runtime only for labelled containers and remove exactly those.
+        rt = self.make('echo "$*" >> "$0.log"\ncase "$1" in info) echo 2;; ps) echo abc123;; *) ;; esac\n')
+        self.assertEqual(runner.cleanup(rt), ["abc123"])
+        with open(rt + ".log") as fh:
+            calls = fh.read().splitlines()
+        self.assertIn("ps -aq --filter label=" + runner.LABEL, calls)
+        self.assertIn("rm -f abc123", calls)
 
     def test_selftest_reports_blocked(self):
         rt = self.make("exit 1\n")

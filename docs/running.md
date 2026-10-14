@@ -14,13 +14,21 @@ This fails fast if the runtime is not started, if it lacks cgroup v2, or if
 it is out of storage. It then proves every control by running deliberately
 hostile commands inside containers.
 
+If a runner is interrupted, remove its leftovers with:
+
+```sh
+python3 tools/runner.py cleanup
+```
+
+This removes only containers the runner labelled.
+
 ## Limits
 
 | Limit | Default |
 | --- | --- |
 | Wall time | 2 s |
 | Memory (no swap) | 512 MiB |
-| Captured output | 64 KiB |
+| Captured output (stdout and stderr combined) | 64 KiB |
 | Processes | 64 |
 | Writable temporary space | 1 MiB |
 
