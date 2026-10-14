@@ -43,6 +43,9 @@ schema checks use [goneat](https://github.com/fulmenhq/goneat)
 ([PDR-0002](docs/decisions/PDR-0002-goneat-maintainer-toolchain.md)). Consumers
 need only `python3`.
 
+Before pushing, maintainers run `make prepush`. It adds a containment
+self-test that needs a container runtime ([docs/running.md](docs/running.md)).
+
 Large tables are generated, not committed: each recipe under `recipes/` pins
 its generator, parameters, case count, and a digest of the exact output
 ([DDR-0004](docs/decisions/DDR-0004-recipes-and-hydration.md)). Hydration

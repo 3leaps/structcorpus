@@ -61,3 +61,29 @@ resident-memory limit anyway.
   execution stays disabled until those tests pass on the host.
 - This record describes controls only, not the parser defects those controls
   defend against.
+
+## Implementation note (runner)
+
+`tools/runner.py` implements this record with one container per hostile case:
+- a memory limit equal to the swap limit (no swap);
+- a process limit;
+- no network;
+- a read-only root and a capped tmpfs;
+- all capabilities dropped and `no-new-privileges` set;
+- input on stdin.
+
+The runner enforces wall time and the output cap itself, and stops a case as
+soon as its output passes the cap. Before starting a case, it reads the
+container's configuration back and refuses to run (`blocked`) if any limit
+is missing. The runtime must report cgroup v2. A missing or stopped runtime,
+or a runtime out of storage, is reported as `blocked`, with storage
+exhaustion named explicitly.
+
+Peak memory is recorded as `not_measured`. It is a measurement, not a gate,
+and no supported post-exit source exists for it yet.
+
+`make stress-selftest` proves each control on the host: memory, wall time,
+output, processes, network, read-only root, and tmpfs. Every limit that
+produces a crash is paired with a positive control showing the same operation
+succeeds when the limit is lifted. The self-test is part of `make prepush`,
+the pre-push and PR-final gate; CI does not run containers.

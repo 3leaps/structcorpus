@@ -1,6 +1,6 @@
 # structcorpus developer targets. Tooling: python3 (3.9+) for the corpus;
 # goneat for format, lint, and JSON Schema checks.
-.PHONY: all help check test validate schemas hydrate fmt fmt-check lint clean
+.PHONY: all help check prepush stress-selftest test validate schemas hydrate fmt fmt-check lint clean
 
 PYTHON ?= python3
 GONEAT ?= goneat
@@ -11,6 +11,11 @@ help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/'
 
 check: fmt-check lint validate test schemas hydrate ## Run every non-mutating check
+
+prepush: check stress-selftest ## Pre-push and PR-final gate: check, then the containment self-test
+
+stress-selftest: ## Prove container limits are enforced; fails fast if the runtime is not started
+	$(PYTHON) tools/runner.py selftest --require-containment
 
 test: ## Run the corpus-tool unit tests
 	$(PYTHON) -m unittest discover -s tests

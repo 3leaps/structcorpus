@@ -36,6 +36,7 @@ If local guidance exists for this repository, read it as well.
 make check        # everything non-mutating: format, lint, validate, tests, schemas, hydrate
 make fmt          # apply formatting (fixtures/ and expected/ are never touched)
 make test validate hydrate   # python3 only, no goneat needed
+make prepush      # before pushing or marking a PR final: check + containment self-test
 ```
 
 - Maintainer tooling is goneat with ruff, yamllint, yamlfmt, shfmt, actionlint,

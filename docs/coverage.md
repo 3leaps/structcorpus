@@ -20,7 +20,8 @@ Release stages are defined in
 | Wire-format goldens for a specific implementation's encoder | Not planned: an implementation's encoded output is its own conformance surface, not engine-neutral corpus material |
 | YAML adversarial families and bounded recipes | Planned, 0.2 |
 | Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |
-| `list`, recipe ladders, containment runner, stress tier | Planned, 0.2 |
+| Containment runner with self-tests (SecDR-0002) | Implemented |
+| `list`, recipe ladders, stress tier | Planned, 0.2 |
 | yaml-test-suite import, Windows/Linux parity matrix | Planned, 0.3 |
 | Binding lifetime and streaming input surfaces | Unsupported until a consumer exposes them |
 | JSON, XML | Reserved |
