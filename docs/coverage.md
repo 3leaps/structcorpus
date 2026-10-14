@@ -12,6 +12,11 @@ Release stages are defined in
 | Scalar resolution, duplicate-key, and numeric truth generator (59,484 generated cases, `yamlprims-core` r1, provisional) | Implemented |
 | Typed-conversion expectations (DDR-0005): integer widths, `f32`, `f64`, `bool`, `string`, `option-bool` | Implemented (numbers and booleans r2) |
 | Hand-checked boundary goldens, including merge `apply` and `as-key` profiles (125 cases) | Implemented, provisional |
+| yamlprims specification 1.1 profiles (`yamlprims-core` r2, stream, merge variants) and span convention `scalar-alias` r2 (DDR-0006) | Implemented |
+| Specification 1.1 cases: document cardinality, strict flow indentation, block-scalar span ends (12 cases) | Implemented, provisional |
+| Numeric truth and goldens bound to r2 profiles (smoke tier) | Implemented |
+| Boolean and collision truth tables bound to r2 profiles | Planned: when the r1 profiles retire (conformance tier budget) |
+| Empty-node and collection span conventions | Planned |
 | Wire-format goldens for a specific implementation's encoder | Not planned: an implementation's encoded output is its own conformance surface, not engine-neutral corpus material |
 | YAML adversarial families and bounded recipes | Planned, 0.2 |
 | Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |

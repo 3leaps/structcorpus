@@ -253,8 +253,23 @@ class TestCaseRejections(CaseRepo):
         self.mutate(self.located(), lambda c: c["expectations"]["locations"]["spans"][0].update({"event_index": 999}))
         self.assertRejected("out of range")
 
+    def test_r2_convention_rejects_undefined_kind(self):
+        idx = next(i for i, c in enumerate(self.cases)
+                   if c["expectations"].get("locations", {}).get("convention_revision") == 2)
+        self.mutate(idx, lambda c: c["expectations"]["locations"]["spans"].append({"event_index": 2, "start": 0, "end": 0}))
+        self.assertRejected("undefined in scalar-alias r2")
+
+    def test_r2_profiles_cite_tagged_spec(self):
+        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
+            if name.endswith(".r2.json") and name.startswith("yamlprims-core"):
+                with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                    prof = json.load(fh)
+                urls = [c["url"] for c in prof["cites"]]
+                self.assertIn("https://github.com/3leaps/yamlprims/blob/spec-v1.1/docs/spec/yamlprims-spec.md", urls, name)
+                self.assertEqual(prof["policy"]["flow_indentation"], "strict", name)
+
     def test_unknown_span_convention(self):
-        self.mutate(self.located(), lambda c: c["expectations"]["locations"].update({"convention_revision": 2}))
+        self.mutate(self.located(), lambda c: c["expectations"]["locations"].update({"convention_revision": 999}))
         self.assertRejected("unknown span convention")
 
     def test_reviewer_must_differ(self):

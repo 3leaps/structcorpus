@@ -1,0 +1,28 @@
+{
+  "schema_version": "profile/v1",
+  "id": "yamlprims-core-stream",
+  "revision": 2,
+  "dialect": "yaml-1.2.2",
+  "scalar_schema": "core",
+  "policy": {
+    "duplicate_keys": "reject",
+    "merge_keys": "reject",
+    "integer_range": "i128-u128",
+    "documents": "stream",
+    "unknown_tags": "tagged-str",
+    "flow_indentation": "strict"
+  },
+  "cites": [
+    {
+      "title": "yamlprims specification",
+      "url": "https://github.com/3leaps/yamlprims/blob/spec-v1.1/docs/spec/yamlprims-spec.md",
+      "revision": "1.1 (tag spec-v1.1, commit 034bde95bd92dc714d22faa2fea30eb5dc20fe1a, sha256 32fd9f68f8ab2e5df7d4d6822153ac6f053904fd3c6fc9594d96f19f2179c9fd)"
+    },
+    {
+      "title": "YAML Ain't Markup Language (YAML) version 1.2",
+      "url": "https://yaml.org/spec/1.2.2/",
+      "revision": "1.2.2 (2021-10-01)"
+    }
+  ],
+  "description": "Default options of the yamlprims specification revision 1.1: YAML 1.2.2 Core resolution (section 4), integers limited to i128::MIN..=u128::MAX, explicit core tags directing resolution, non-core tags retained with a raw string inner, duplicate keys rejected (section 5.2), strict flow indentation in every parsing pass (section 9, 1.1/E-4), merge directives rejected, and multi-document entrypoints (section 5.5, 1.1/E-2): every document present is returned, and an empty stream is zero documents. Error kinds are the specification's snake_case ErrorKind names."
+}

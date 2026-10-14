@@ -1,0 +1,15 @@
+{
+  "schema_version": "span-convention/v1",
+  "id": "scalar-alias",
+  "revision": 2,
+  "offset_unit": "utf8-byte",
+  "interval": "half-open",
+  "defined_events": [
+    "=VAL",
+    "=ALI"
+  ],
+  "rules": {
+    "=VAL": "Start: unchanged from revision 1 (the first byte of the scalar text, including an opening quote or block indicator, excluding any anchor or tag property). This start differs from the yamlprims scalar start, which begins at the first content byte. End: just after the scalar's last byte, including a closing quote. A literal or folded block scalar ends at the exclusive end of its last source line that contains a byte other than ASCII space or tab, before that line's break; trailing spaces and tabs on that line are inside the span, while kept blank lines and trailing breaks are outside it. A block scalar with no such content line ends at the end of the line containing its start. LF, CRLF, and lone CR are line breaks (yamlprims specification revision 1.1, section 7.2, 1.1/E-1).",
+    "=ALI": "From the '*' indicator to just after the last byte of the alias name."
+  }
+}

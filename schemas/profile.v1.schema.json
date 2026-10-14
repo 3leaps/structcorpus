@@ -20,7 +20,8 @@
         "merge_keys": {"enum": ["reject", "apply", "plain-key"]},
         "integer_range": {"enum": ["unbounded", "i128-u128"]},
         "documents": {"enum": ["single", "stream"]},
-        "unknown_tags": {"enum": ["tagged-str", "reject"]}
+        "unknown_tags": {"enum": ["tagged-str", "reject"]},
+        "flow_indentation": {"enum": ["lenient", "strict"], "description": "Optional. When absent, the setting is whatever the cited specification revision states."}
       }
     },
     "cites": {

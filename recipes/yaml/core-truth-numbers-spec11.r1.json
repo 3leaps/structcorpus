@@ -1,0 +1,38 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/core_truth.py",
+  "profile": "yamlprims-core",
+  "profile_revision": 2,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.1, sections 4, 5.1, and 8."
+  },
+  "id": "core-truth-numbers-spec11",
+  "parameters": {
+    "family": "numbers",
+    "typed": true
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 1000,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 375,
+    "input_bytes": 6855,
+    "digest": "sha256:be45388d0ba544496f204a76ad680d5405b71f0fe26a630fbc847afd82d5b165"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Integer and float resolution for sign, base, range, overflow, underflow, non-finite, and binary32-threshold texts in plain, quoted, and tagged forms. Revision 2 adds typed-conversion expectations (DDR-0005). Bound to the revision 1.1 profile; expectations are unchanged from the revision 1.0 recipe because no input in this set is affected by 1.1/E-1 to E-4."
+  }
+}
