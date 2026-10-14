@@ -1,7 +1,6 @@
 """Case-record validation and canonical JSON tests (Python 3.9+ stdlib)."""
 
 import copy
-import hashlib
 import json
 import os
 import shutil
@@ -39,14 +38,14 @@ class TestCanonicalJson(unittest.TestCase):
 
     def test_string_escaping(self):
         # RFC 8785 section 3.2.2.2: short escapes, \\u00XX for other controls, rest literal.
-        s = "\u0000\u0008\u0009\u000a\u000c\u000d\u001f\"\\/\u007f€"
+        s = '\u0000\u0008\u0009\u000a\u000c\u000d\u001f"\\/\u007f€'
         self.assertEqual(corpus.canonical_json(s), '"\\u0000\\b\\t\\n\\f\\r\\u001f\\"\\\\/\u007f€"')
 
     def test_structure_and_whitespace(self):
         self.assertEqual(corpus.canonical_json({"b": [1, True, None], "a": {}}), '{"a":{},"b":[1,true,null]}')
 
     def test_rejects_outside_subset(self):
-        for value in (1.5, 2 ** 53, "\ud800", {"k": float("nan")}):
+        for value in (1.5, 2**53, "\ud800", {"k": float("nan")}):
             with self.assertRaises(ValueError):
                 corpus.canonical_json(value)
 
@@ -65,7 +64,7 @@ class CaseRepo(unittest.TestCase):
             shutil.copytree(os.path.join(REPO, sub), os.path.join(self.root, sub))
         shutil.copy(os.path.join(REPO, ".gitattributes"), self.root)
         with open(os.path.join(self.root, "manifests", "cases.jsonl"), "rb") as fh:
-            self.cases = [json.loads(l) for l in fh.read().splitlines() if l.strip()]
+            self.cases = [json.loads(line) for line in fh.read().splitlines() if line.strip()]
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -200,7 +199,12 @@ class TestCaseRejections(CaseRepo):
     def add_typed(self, **entry):
         base = {"profile": "yaml-core", "profile_revision": 1, "path": ["enabled"], "target": "bool"}
         base.update(entry)
-        self.mutate(0, lambda c: c["expectations"].setdefault("typed", []).append({k: v for k, v in base.items() if v is not None}))
+        self.mutate(
+            0,
+            lambda c: (
+                c["expectations"].setdefault("typed", []).append({k: v for k, v in base.items() if v is not None})
+            ),
+        )
 
     def test_typed_valid(self):
         self.add_typed(result={"t": "bool", "v": True})
@@ -238,11 +242,14 @@ class TestCaseRejections(CaseRepo):
         return next(i for i, c in enumerate(self.cases) if "locations" in c["expectations"])
 
     def test_span_on_undefined_event_kind(self):
-        self.mutate(self.located(), lambda c: c["expectations"]["locations"]["spans"].append({"event_index": 2, "start": 0, "end": 1}))
+        self.mutate(
+            self.located(),
+            lambda c: c["expectations"]["locations"]["spans"].append({"event_index": 2, "start": 0, "end": 1}),
+        )
         self.assertRejected("undefined in scalar-alias r1")
 
     def test_span_outside_input(self):
-        self.mutate(self.located(), lambda c: c["expectations"]["locations"]["spans"][0].update({"end": 10 ** 6}))
+        self.mutate(self.located(), lambda c: c["expectations"]["locations"]["spans"][0].update({"end": 10**6}))
         self.assertRejected("outside input")
 
     def test_inverted_span(self):

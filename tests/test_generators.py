@@ -30,7 +30,7 @@ class TestGoldens(unittest.TestCase):
         self.assertEqual(total, len(core_goldens.ROWS))
 
     def test_rows_are_metadata_subset(self):
-        for lid, cat, pol, text, exp, typed in core_goldens.ROWS:
+        for lid, _cat, _pol, _text, exp, typed in core_goldens.ROWS:
             corpus.canonical_json(exp)
             for t in typed:
                 corpus.canonical_json(t)
@@ -38,7 +38,7 @@ class TestGoldens(unittest.TestCase):
                 self.assertEqual(("result" in t) + ("error" in t), 1, lid)
 
     def test_merge_rows_only_under_merge_profiles(self):
-        for lid, cat, pol, text, exp, typed in core_goldens.ROWS:
+        for lid, cat, pol, _text, _exp, _typed in core_goldens.ROWS:
             if pol != "reject":
                 self.assertEqual(cat, "merge-policy", lid)
 
@@ -60,7 +60,7 @@ class TestTypedConversion(unittest.TestCase):
         self.assertEqual(value("string", "1"), ("error", {"phase": "typed", "kind": "type"}))
 
     def test_int_to_float_exactness(self):
-        self.assertEqual(value("f64", "9007199254740992"), ("result", core_truth.FLT(2.0 ** 53)))
+        self.assertEqual(value("f64", "9007199254740992"), ("result", core_truth.FLT(2.0**53)))
         self.assertEqual(value("f64", "9007199254740993")[0], "error")
         self.assertEqual(value("f32", "16777216"), ("result", {"t": "float32", "bits": "4b800000"}))
         self.assertEqual(value("f32", "16777217")[0], "error")
@@ -68,10 +68,12 @@ class TestTypedConversion(unittest.TestCase):
     def test_f32_threshold(self):
         # 2^128 - 2^103 ties to even and overflows; the value just below rounds to f32::MAX.
         self.assertEqual(value("f32", "3.4028235677973362e38"), ("result", {"t": "float32", "bits": "7f7fffff"}))
-        self.assertEqual(value("f32", "3.4028235677973366e38"),
-                         ("error", {"phase": "typed", "kind": "float_out_of_range"}))
-        self.assertEqual(value("f32", "-3.4028235677973366e38"),
-                         ("error", {"phase": "typed", "kind": "float_out_of_range"}))
+        self.assertEqual(
+            value("f32", "3.4028235677973366e38"), ("error", {"phase": "typed", "kind": "float_out_of_range"})
+        )
+        self.assertEqual(
+            value("f32", "-3.4028235677973366e38"), ("error", {"phase": "typed", "kind": "float_out_of_range"})
+        )
         self.assertEqual(value("f32", "3.4028235e38"), ("result", {"t": "float32", "bits": "7f7fffff"}))
 
     def test_f32_specials(self):
@@ -93,17 +95,17 @@ class TestTypedConversion(unittest.TestCase):
         rows = [r for r in core_truth.gen_booleans(typed=True) if r[1] == "scalar-resolution"]
         tagged = [r for r in rows if "!custom" in r[2] and r[2].startswith("k: ")]
         self.assertTrue(tagged)
-        for rid, cat, y, exp, typed in tagged:
+        for rid, _cat, _y, _exp, typed in tagged:
             self.assertEqual({t["error"]["kind"] for t in typed}, {"type"}, rid)
 
     def test_typed_only_at_block_value(self):
-        for rid, cat, y, exp, typed in core_truth.gen_booleans(typed=True):
+        for rid, _cat, y, _exp, typed in core_truth.gen_booleans(typed=True):
             if typed:
                 self.assertTrue(y.startswith("k: ") or y.startswith("k: |") or y.startswith("k: >"), rid)
 
     def test_struct_matches_round_to_nearest_even(self):
         # Halfway between 1.0 and the next binary32 value rounds to even (1.0).
-        half = 1.0 + 2.0 ** -24
+        half = 1.0 + 2.0**-24
         self.assertEqual(struct.pack(">f", half).hex(), "3f800000")
 
 

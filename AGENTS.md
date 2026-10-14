@@ -33,10 +33,13 @@ If local guidance exists for this repository, read it as well.
 ## Development
 
 ```sh
-python3 tools/corpus.py validate
-python3 -m unittest discover -s tests -v
-tools/schema-check.sh        # requires goneat; also runs in CI
+make check        # everything non-mutating: format, lint, validate, tests, schemas, hydrate
+make fmt          # apply formatting (fixtures/ and expected/ are never touched)
+make test validate hydrate   # python3 only, no goneat needed
 ```
+
+- Maintainer tooling is goneat with ruff, yamllint, yamlfmt, shfmt, actionlint,
+  and checkmake (PDR-0002). CI runs it in a digest-pinned runner image.
 
 - After editing a fixture, recompute its `sha256` and `bytes` in
   `manifests/cases.jsonl`. Never edit a fixture to match an expectation.

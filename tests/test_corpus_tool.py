@@ -55,13 +55,12 @@ class TestStrictJson(unittest.TestCase):
                 corpus.load_json_strict(text)
 
     def test_rejects_floats(self):
-        for text in (b'{"a": 1.0}', b'{"a": 1e3}', b'[0.5]'):
+        for text in (b'{"a": 1.0}', b'{"a": 1e3}', b"[0.5]"):
             with self.assertRaises(ValueError):
                 corpus.load_json_strict(text)
 
     def test_integer_range(self):
-        self.assertEqual(corpus.load_json_strict(b"[9007199254740991, -9007199254740991]"),
-                         [2 ** 53 - 1, -(2 ** 53 - 1)])
+        self.assertEqual(corpus.load_json_strict(b"[9007199254740991, -9007199254740991]"), [2**53 - 1, -(2**53 - 1)])
         for text in (b"[9007199254740992]", b"[-9007199254740992]", b'{"a": [1e400]}'):
             with self.assertRaises(ValueError):
                 corpus.load_json_strict(text)
@@ -72,7 +71,7 @@ class TestStrictJson(unittest.TestCase):
                 corpus.load_json_strict(text)
 
     def test_accepts_surrogate_pair(self):
-        self.assertEqual(corpus.load_json_strict(b'["\\ud83d\\ude00"]'), ["\U0001F600"])
+        self.assertEqual(corpus.load_json_strict(b'["\\ud83d\\ude00"]'), ["\U0001f600"])
 
     def test_accepts_plain(self):
         self.assertEqual(corpus.load_json_strict(b'{"a": [1, "x"]}'), {"a": [1, "x"]})
