@@ -1,0 +1,37 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/core_truth.py",
+  "profile": "yamlprims-core",
+  "profile_revision": 1,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.0, sections 4 and 5.1."
+  },
+  "id": "core-truth-collisions",
+  "parameters": {
+    "family": "collisions"
+  },
+  "execution": {
+    "tier": "conformance",
+    "max_cases": 25000,
+    "max_output_bytes": 134217728
+  },
+  "expected": {
+    "cases": 17955,
+    "input_bytes": 315252,
+    "digest": "sha256:ff8e61bdb9c6a64d8a6d1a2cd07ea921eb6670fa2f4a62a4973c7522515d1efa"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Pairs of sibling plain or double-quoted keys; a duplicate_key error exactly when the resolved keys are equal under section 5.1."
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": "profile/v1",
+  "id": "yamlprims-core",
+  "revision": 1,
+  "dialect": "yaml-1.2.2",
+  "scalar_schema": "core",
+  "policy": {
+    "duplicate_keys": "reject",
+    "merge_keys": "reject",
+    "integer_range": "i128-u128",
+    "documents": "single",
+    "unknown_tags": "tagged-str"
+  },
+  "cites": [
+    {
+      "title": "yamlprims specification",
+      "url": "https://github.com/3leaps/yamlprims/blob/spec-v1.0/docs/spec/yamlprims-spec.md",
+      "revision": "1.0 (tag spec-v1.0, sha256 bc0dd5f7c3168c21ae666757c94cf05ceb89f98a90421910ca79eedfa02ca6e2)"
+    },
+    {
+      "title": "YAML Ain't Markup Language (YAML) version 1.2",
+      "url": "https://yaml.org/spec/1.2.2/",
+      "revision": "1.2.2 (2021-10-01)"
+    }
+  ],
+  "description": "Default options of the yamlprims specification revision 1.0: YAML 1.2.2 Core resolution (section 4), integers limited to i128::MIN..=u128::MAX with out-of-range as a resolution error, explicit core tags directing resolution, non-core tags retained with a raw string inner, duplicate keys rejected (section 5.2), merge directives rejected (section 5.3 default), and a single document per input. Error kinds are the specification's snake_case ErrorKind names."
+}

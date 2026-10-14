@@ -5,20 +5,23 @@ Subcommands:
   validate   Check repository rules (DDR-0001), metadata (ADR-0002), and case
              records (DDR-0002, DDR-0003, SecDR-0001).
   canon      Print a JSON file in canonical form (JCS over the ADR-0002 subset).
+  hydrate    Generate recipe inputs into an output root outside the checkout.
+  verify     Re-check a hydrated root's inputs, manifest, and recipe digests.
 
 Full JSON Schema validation runs separately in CI with an external validator;
 the checks here are the admission gate a consumer can run with python3 alone.
 
-Hydrate and verify are added with the first generated material (PDR-0001,
-stage 0.1); list arrives with the recipe ladders (stage 0.2).
+`list` arrives with the recipe ladders (PDR-0001, stage 0.2).
 """
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -217,7 +220,10 @@ def check_repository(root):
 CASE_REQUIRED = ("schema_version", "id", "revision", "format", "dialect", "category",
                  "classifiers", "provenance", "input", "expectations", "execution", "review")
 SUPPORTED = {"case": "case/v1", "profile": "profile/v1", "span": "span-convention/v1",
-             "upstreams": "upstreams-lock/v1"}
+             "upstreams": "upstreams-lock/v1", "recipe": "recipe/v1", "hydrated": "hydrated/v1"}
+TIER_CAPS = {"smoke": 16 * 1024 * 1024, "conformance": 128 * 1024 * 1024, "stress": 256 * 1024 * 1024}
+TIER_ORDER = ("smoke", "conformance", "stress")
+HYDRATE_MARKER = ".structcorpus-hydrated.json"
 EVENT_RE = re.compile(r"^[+=-][A-Z]{3}( .*)?$")
 ERROR_PHASES = {"input", "syntax", "resolution", "structure", "limit", "typed"}
 
@@ -380,6 +386,265 @@ def check_manifests(root):
     return errors
 
 
+# ---- recipes, hydration, verification (DDR-0004) -----------------------------
+
+def _load_generator(root, rel):
+    path = os.path.join(root, *rel.split("/"))
+    spec = importlib.util.spec_from_file_location("structcorpus_gen_" + os.path.basename(rel)[:-3], path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_recipes(root, errors):
+    out = {}
+    top = os.path.join(root, "recipes")
+    if not os.path.isdir(top):
+        return out
+    for full in _walk_files(top):
+        rel = os.path.relpath(full, root).replace(os.sep, "/")
+        if not rel.endswith(".json"):
+            continue
+        doc = _read_json(root, rel, errors)
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("schema_version") != SUPPORTED["recipe"]:
+            errors.append("%s: unsupported schema_version %r" % (rel, doc.get("schema_version")))
+            continue
+        expected_rel = "recipes/%s/%s.r%s.json" % (doc.get("format"), doc.get("id"), doc.get("revision"))
+        if rel != expected_rel:
+            errors.append("%s: path must be %s" % (rel, expected_rel))
+            continue
+        out[rel] = doc
+    return out
+
+
+def check_recipe(root, rel, doc, profiles, errors):
+    cls = doc.get("classifiers") if isinstance(doc.get("classifiers"), dict) else {}
+    if cls.get("sensitivity") != "0-public" or cls.get("access-tier") != "public":
+        errors.append("%s: classifiers must be exactly sensitivity=0-public, access-tier=public (SecDR-0001)" % rel)
+    prov = doc.get("provenance") if isinstance(doc.get("provenance"), dict) else {}
+    if prov.get("origin") != "synthetic" or not prov.get("license"):
+        errors.append("%s: recipes are synthetic with a license (SecDR-0001)" % rel)
+    if (doc.get("profile"), doc.get("profile_revision")) not in profiles:
+        errors.append("%s: unknown profile %s r%s" % (rel, doc.get("profile"), doc.get("profile_revision")))
+    gen = doc.get("generator")
+    if not isinstance(gen, str) or not gen.startswith("generators/%s/" % doc.get("format")) \
+            or path_problems(gen) or not os.path.isfile(os.path.join(root, *gen.split("/"))):
+        errors.append("%s: generator %r is missing or misplaced" % (rel, gen))
+    ex = doc.get("execution") if isinstance(doc.get("execution"), dict) else {}
+    exp = doc.get("expected") if isinstance(doc.get("expected"), dict) else {}
+    cap = TIER_CAPS.get(ex.get("tier"))
+    if cap is None or not isinstance(ex.get("max_output_bytes"), int) or ex["max_output_bytes"] > cap:
+        errors.append("%s: max_output_bytes must be set and within the %s tier cap" % (rel, ex.get("tier")))
+    if not isinstance(exp.get("cases"), int) or not isinstance(ex.get("max_cases"), int) or exp["cases"] > ex["max_cases"]:
+        errors.append("%s: expected.cases must not exceed execution.max_cases" % rel)
+    review = doc.get("review") if isinstance(doc.get("review"), dict) else {}
+    if review.get("status") == "reviewed" and (not review.get("reviewer") or review.get("reviewer") == review.get("author")):
+        errors.append("%s: a reviewed recipe needs a reviewer distinct from its author" % rel)
+
+
+class HydrateError(Exception):
+    pass
+
+
+def _inside(path, root):
+    path, root = os.path.realpath(path), os.path.realpath(root)
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def _recipe_cases(root, rel, doc):
+    """Yield concrete case records for one recipe, enforcing its declared caps."""
+    gen = _load_generator(root, doc["generator"])
+    cap_cases = doc["execution"]["max_cases"]
+    cap_bytes = doc["execution"]["max_output_bytes"]
+    total = 0
+    seen = set()
+    for count, (local_id, category, text, expectation) in enumerate(gen.generate(doc["parameters"]), 1):
+        if count > cap_cases:
+            raise HydrateError("%s: generator exceeded max_cases %d" % (rel, cap_cases))
+        if not isinstance(local_id, str) or not COMPONENT_RE.match(local_id) or local_id in seen:
+            raise HydrateError("%s: generator produced invalid or repeated id %r" % (rel, local_id))
+        seen.add(local_id)
+        data = text.encode("utf-8") if isinstance(text, str) else bytes(text)
+        cid = "%s.%s" % (doc["id"], local_id)
+        value = dict(expectation, profile=doc["profile"], profile_revision=doc["profile_revision"])
+        record = {
+            "schema_version": SUPPORTED["case"], "id": cid, "revision": doc["revision"],
+            "format": doc["format"], "dialect": doc["dialect"], "category": category,
+            "classifiers": doc["classifiers"], "provenance": doc["provenance"],
+            "input": {"recipe": rel, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)},
+            "expectations": {"value": [value]},
+            "execution": {"tier": doc["execution"]["tier"], "hazards": []},
+            "review": doc["review"],
+        }
+        line = canonical_json(record).encode("utf-8")
+        total += len(data) + len(line) + 1  # input bytes plus its manifest line
+        if total > cap_bytes:
+            raise HydrateError("%s: generator exceeded max_output_bytes %d" % (rel, cap_bytes))
+        yield cid, data, record, line
+
+
+def recipe_digest(case_lines):
+    """sha256 over the recipe's canonical case lines, each newline-terminated."""
+    h = hashlib.sha256()
+    for line in case_lines:
+        h.update(line)
+        h.update(b"\n")
+    return "sha256:" + h.hexdigest()
+
+
+def hydrate(root, out, tier, recipe_filter=None):
+    """Write every selected recipe's inputs and manifest into out. Returns a summary dict."""
+    errors = []
+    profiles = _load_registry(root, "profiles", "profile", errors)
+    recipes = load_recipes(root, errors)
+    for rel, doc in recipes.items():
+        check_recipe(root, rel, doc, profiles, errors)
+    if errors:
+        raise HydrateError("; ".join(errors))
+    if _inside(out, root) or _inside(root, out):
+        raise HydrateError("output root must be outside the checkout: %s" % out)
+    if os.path.lexists(out):
+        raise HydrateError("output root already exists; choose a new path: %s" % out)
+    parent = os.path.dirname(os.path.abspath(out)) or "."
+    if not os.path.isdir(parent):
+        raise HydrateError("parent directory does not exist: %s" % parent)
+    allowed = TIER_ORDER[:TIER_ORDER.index(tier) + 1]
+    selected = sorted(rel for rel, doc in recipes.items()
+                      if doc["execution"]["tier"] in allowed and (recipe_filter is None or doc["id"] in recipe_filter))
+    work = tempfile.mkdtemp(prefix=".structcorpus-", dir=parent)
+    try:
+        summary = _hydrate_into(root, work, recipes, selected, tier)
+        os.rename(work, out)
+    except BaseException:
+        _remove_own_tree(work)
+        raise
+    return summary
+
+
+def _remove_own_tree(work):
+    """Delete a temporary tree this process created; refuse anything else."""
+    if not os.path.basename(work).startswith(".structcorpus-") or os.path.islink(work):
+        return
+    for dirpath, dirnames, filenames in os.walk(work, topdown=False):
+        for name in filenames:
+            os.unlink(os.path.join(dirpath, name))
+        for name in dirnames:
+            full = os.path.join(dirpath, name)
+            if os.path.islink(full):
+                os.unlink(full)
+            else:
+                os.rmdir(full)
+    os.rmdir(work)
+
+
+def _hydrate_into(root, work, recipes, selected, tier):
+    budget = TIER_CAPS[tier]
+    summary = {"schema_version": SUPPORTED["hydrated"], "tier": tier, "recipes": []}
+    written = 0
+    with open(os.path.join(work, "cases.jsonl"), "wb") as manifest:
+        for rel in selected:
+            doc = recipes[rel]
+            lines = []
+            in_bytes = 0
+            for cid, data, record, line in _recipe_cases(root, rel, doc):
+                written += len(data) + len(line) + 1  # inputs and manifest both count
+                if written > budget:
+                    raise HydrateError("aggregate output exceeds the %s cap %d bytes" % (tier, budget))
+                dest = os.path.join(work, "inputs", doc["format"], doc["id"])
+                os.makedirs(dest, exist_ok=True)
+                with open(os.path.join(dest, cid.split(".")[-1] + ".yaml"), "xb") as fh:
+                    fh.write(data)
+                lines.append(line)
+                in_bytes += len(data)
+                manifest.write(line + b"\n")
+            digest = recipe_digest(lines)
+            exp = doc["expected"]
+            if (len(lines), in_bytes, digest) != (exp["cases"], exp["input_bytes"], exp["digest"]):
+                raise HydrateError("%s: output does not match recorded expected counts/digest "
+                                   "(got cases=%d input_bytes=%d %s)" % (rel, len(lines), in_bytes, digest))
+            summary["recipes"].append({"recipe": rel, "cases": len(lines), "input_bytes": in_bytes, "digest": digest})
+    summary["output_bytes"] = written
+    with open(os.path.join(work, HYDRATE_MARKER), "wb") as fh:
+        fh.write(canonical_json(summary).encode("utf-8"))
+    return summary
+
+
+def verify(root, out):
+    """Recheck a hydrated root against its manifest and the recipes' expected digests."""
+    errors = []
+    marker = os.path.join(out, HYDRATE_MARKER)
+    if not os.path.isfile(marker):
+        return ["%s: not a completed hydration (missing %s)" % (out, HYDRATE_MARKER)]
+    with open(marker, "rb") as fh:
+        summary = load_json_strict(fh.read())
+    if summary.get("schema_version") != SUPPORTED["hydrated"]:
+        return ["%s: unsupported schema_version %r" % (marker, summary.get("schema_version"))]
+    recipes = load_recipes(root, errors)
+    by_recipe = {}
+    with open(os.path.join(out, "cases.jsonl"), "rb") as fh:
+        for line in fh.read().split(b"\n"):
+            if not line:
+                continue
+            rec = load_json_strict(line)
+            if canonical_json(rec).encode("utf-8") != line:
+                errors.append("%s: manifest line is not canonical" % rec.get("id"))
+            rel = rec["input"]["recipe"]
+            by_recipe.setdefault(rel, []).append(line)
+            fmt, rid = rec["format"], rec["id"].rsplit(".", 1)
+            path = os.path.join(out, "inputs", fmt, rid[0], rid[1] + ".yaml")
+            try:
+                with open(path, "rb") as f:
+                    data = f.read()
+            except OSError:
+                errors.append("%s: input missing" % rec["id"])
+                continue
+            if hashlib.sha256(data).hexdigest() != rec["input"]["sha256"] or len(data) != rec["input"]["bytes"]:
+                errors.append("%s: input does not match manifest sha256/bytes" % rec["id"])
+    # The marker is part of the untrusted output: it may only agree with the
+    # manifest, never decide what gets checked. Every recipe present in the
+    # manifest is verified against the checkout's recorded digest.
+    listed = summary.get("recipes")
+    listed_rels = [e.get("recipe") for e in listed] if isinstance(listed, list) and \
+        all(isinstance(e, dict) for e in listed) else None
+    if listed_rels is None or sorted(listed_rels) != sorted(by_recipe) or len(set(listed_rels)) != len(listed_rels):
+        errors.append("marker recipe list does not match the recipes in the manifest")
+    if not by_recipe:
+        errors.append("manifest contains no cases")
+    for rel in sorted(by_recipe):
+        doc = recipes.get(rel)
+        if doc is None:
+            errors.append("%s: recipe not present in this checkout" % rel)
+            continue
+        exp = doc["expected"]
+        if len(by_recipe[rel]) != exp["cases"] or recipe_digest(by_recipe[rel]) != exp["digest"]:
+            errors.append("%s: hydrated cases do not match the recipe's expected digest" % rel)
+    return errors
+
+
+def cmd_hydrate(args):
+    try:
+        summary = hydrate(args.root, args.output, args.tier, set(args.recipe) if args.recipe else None)
+    except HydrateError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    for r in summary["recipes"]:
+        print("%s: %d cases, %d input bytes, %s" % (r["recipe"], r["cases"], r["input_bytes"], r["digest"]))
+    print("hydrate: ok (%s)" % args.output)
+    return 0
+
+
+def cmd_verify(args):
+    errors = verify(args.root_dir, args.root)
+    for err in errors:
+        print("error: " + err, file=sys.stderr)
+    if errors:
+        return 1
+    print("verify: ok")
+    return 0
+
+
 def cmd_canon(args):
     with open(args.file, "rb") as fh:
         value = load_json_strict(fh.read())
@@ -387,8 +652,16 @@ def cmd_canon(args):
     return 0
 
 
+def check_recipes(root):
+    errors = []
+    profiles = _load_registry(root, "profiles", "profile", errors)
+    for rel, doc in load_recipes(root, errors).items():
+        check_recipe(root, rel, doc, profiles, errors)
+    return errors
+
+
 def cmd_validate(args):
-    errors = check_repository(args.root) + check_manifests(args.root)
+    errors = check_repository(args.root) + check_manifests(args.root) + check_recipes(args.root)
     for err in errors:
         print("error: " + err, file=sys.stderr)
     if errors:
@@ -407,6 +680,16 @@ def main(argv=None):
     p_canon = sub.add_parser("canon", help="print a JSON file in canonical form")
     p_canon.add_argument("file")
     p_canon.set_defaults(func=cmd_canon)
+    p_hyd = sub.add_parser("hydrate", help="generate recipe inputs outside the checkout")
+    p_hyd.add_argument("--tier", choices=TIER_ORDER, default="smoke")
+    p_hyd.add_argument("--output", required=True, help="new directory outside the checkout")
+    p_hyd.add_argument("--recipe", action="append", help="limit to a recipe id (repeatable)")
+    p_hyd.add_argument("--root", default=ROOT, help=argparse.SUPPRESS)
+    p_hyd.set_defaults(func=cmd_hydrate)
+    p_ver = sub.add_parser("verify", help="re-check a hydrated output root")
+    p_ver.add_argument("--root", required=True, help="hydrated output root")
+    p_ver.add_argument("--repo", dest="root_dir", default=ROOT, help=argparse.SUPPRESS)
+    p_ver.set_defaults(func=cmd_verify)
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         parser.print_help(sys.stderr)
