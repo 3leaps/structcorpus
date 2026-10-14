@@ -24,6 +24,7 @@ and its [normative catalog](https://github.com/3leaps/crucible/blob/fc6c49a3a1dd
 | [DDR-0002](DDR-0002-format-events-and-profile-expectations.md) | Format-level events separate from profile-bound expectations | Proposed |
 | [DDR-0003](DDR-0003-case-record-and-value-notation.md) | Case record, value notation, and span convention r1 | Proposed |
 | [DDR-0004](DDR-0004-recipes-and-hydration.md) | Generator recipes, pinned digests, and bounded hydration | Proposed |
+| [DDR-0005](DDR-0005-typed-conversion-expectations.md) | Typed-conversion expectations | Proposed |
 | [SecDR-0001](SecDR-0001-public-only-admission.md) | Public-only admission and classification compliance | Proposed |
 | [SecDR-0002](SecDR-0002-bounded-execution-containment.md) | Bounded execution and memory containment for hostile cases | Proposed |
 | [PDR-0001](PDR-0001-staged-releases.md) | Staged releases, each with its own acceptance list | Proposed |

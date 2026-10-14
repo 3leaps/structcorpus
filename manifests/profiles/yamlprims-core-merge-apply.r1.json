@@ -1,0 +1,27 @@
+{
+  "schema_version": "profile/v1",
+  "id": "yamlprims-core-merge-apply",
+  "revision": 1,
+  "dialect": "yaml-1.2.2",
+  "scalar_schema": "core",
+  "policy": {
+    "duplicate_keys": "reject",
+    "merge_keys": "apply",
+    "integer_range": "i128-u128",
+    "documents": "single",
+    "unknown_tags": "tagged-str"
+  },
+  "cites": [
+    {
+      "title": "yamlprims specification",
+      "url": "https://github.com/3leaps/yamlprims/blob/spec-v1.0/docs/spec/yamlprims-spec.md",
+      "revision": "1.0 (tag spec-v1.0, sha256 bc0dd5f7c3168c21ae666757c94cf05ceb89f98a90421910ca79eedfa02ca6e2)"
+    },
+    {
+      "title": "YAML Ain't Markup Language (YAML) version 1.2",
+      "url": "https://yaml.org/spec/1.2.2/",
+      "revision": "1.2.2 (2021-10-01)"
+    }
+  ],
+  "description": "As yamlprims-core r1, with merge_keys = Apply (yamlprims specification revision 1.0, section 5.3): explicit keys win wherever they appear, earlier sources win among sources, merged-in entries take the directive's slot in source order."
+}
