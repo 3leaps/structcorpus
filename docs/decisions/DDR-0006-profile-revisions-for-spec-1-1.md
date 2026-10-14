@@ -58,8 +58,15 @@ Profiles pinned to 1.0 must keep their expectations unchanged.
 ## Consequences
 
 - A consumer qualifying against specification 1.1 has r2-bound expectations
-  for everything except the two large truth tables.
-  `docs/coverage.md` records that gap.
+  for the numeric truth and golden recipes and the cases listed above. The
+  boolean and collision truth tables remain r1-bound, and r1-bound rows are
+  never counted as r2 results. Empty-node, collection, and explicit-root
+  locations and parent containment are not yet asserted, so this is not
+  complete coverage of 1.1/E-1 or 1.1/E-2. `docs/coverage.md` records these
+  gaps.
+- The copied recipes keep their recorded value and typed expectations
+  unchanged. They record no spans, so the E-1 span change does not apply to
+  them.
 - Old pins keep reproducing their original expectations byte for byte.
 - When a parser disagrees with YAML on HWV9 or 9C9N, it shows up as a mismatch
   on a format-level case and is not hidden inside a profile.

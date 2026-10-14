@@ -104,6 +104,60 @@ class TestShippedCases(CaseRepo):
         self.assertEqual(layers, {"events", "value", "locations"})
 
 
+class TestEventNotation(CaseRepo):
+    """Expected events use the pinned yaml-test-suite notation exactly."""
+
+    def case(self, cid):
+        return next(c for c in self.cases if c["id"] == cid)
+
+    def test_flow_sequence_control_exact_events(self):
+        # A flow sequence starts with "+SEQ []" in the pinned notation, not a bare "+SEQ".
+        self.assertEqual(
+            self.case("yaml.syntax.flow-indented-control")["expectations"]["events"]["events"],
+            [
+                "+STR",
+                "+DOC ---",
+                "+MAP",
+                "=VAL :flow",
+                "+SEQ []",
+                "=VAL :a",
+                "=VAL :b",
+                "=VAL :c",
+                "-SEQ",
+                "-MAP",
+                "-DOC",
+                "-STR",
+            ],
+        )
+
+    def test_flow_markers_match_flow_openers(self):
+        # For inputs without quotes or comments, every "[" or "{" opens a flow collection,
+        # so the number of flow-marked start events must equal the number of openers.
+        checked = 0
+        for c in self.cases:
+            ev = c["expectations"]["events"]
+            if ev["status"] != "valid":
+                continue
+            with open(os.path.join(REPO, *c["input"]["path"].split("/")), "rb") as fh:
+                text = fh.read().decode("utf-8")
+            if any(ch in text for ch in "\"'#"):
+                continue
+            openers = text.count("[") + text.count("{")
+            marked = sum(1 for e in ev["events"] if e.startswith(("+SEQ []", "+MAP {}")))
+            self.assertEqual(marked, openers, c["id"])
+            checked += 1
+        self.assertGreater(checked, 10)
+
+    def test_flow_marker_precedes_properties(self):
+        # Upstream order is the style marker, then anchor and tag: "+SEQ [] &a".
+        for c in self.cases:
+            for e in c["expectations"]["events"].get("events", []):
+                if e.startswith(("+SEQ ", "+MAP ")):
+                    rest = e[5:]
+                    if "[]" in rest or "{}" in rest:
+                        self.assertTrue(rest.startswith(("[]", "{}")), (c["id"], e))
+
+
 class TestCaseRejections(CaseRepo):
     def test_classifier_unknown(self):
         self.mutate(0, lambda c: c["classifiers"].update({"sensitivity": "unknown"}))
