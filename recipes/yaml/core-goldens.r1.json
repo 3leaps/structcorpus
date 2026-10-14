@@ -1,0 +1,37 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/core_goldens.py",
+  "profile": "yamlprims-core",
+  "profile_revision": 1,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Hand-written for structcorpus from the published yamlprims specification revision 1.0, sections 4, 5, and 8; each expected value is written out, not computed."
+  },
+  "id": "core-goldens",
+  "parameters": {
+    "merge_policy": "reject"
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 500,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 116,
+    "input_bytes": 1462,
+    "digest": "sha256:b47c8945e5f2ba12a12cae0b43aa3eedc4f53fc180a0f072a6efd2641d9b32f8"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Hand-checked boundary goldens under the default profile: Core booleans, nulls and numbers, explicit and non-core tags, key equality and duplicates, merge rejection, aliases, document count, and typed targets."
+  }
+}

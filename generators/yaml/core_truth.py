@@ -10,9 +10,11 @@ Families (selected by the recipe's "family" parameter):
   collisions  sibling keys; duplicate exactly when key equality (5.1) holds
   numbers     integer and float resolution, plain, quoted, and tagged
 
-Each yielded case is (local_id, category, yaml_text, expectation). An
+Each yielded case is (local_id, category, yaml_text, expectation, typed). An
 expectation is {"documents": [value]} or {"error": {...}} in the yaml-value/1
-notation (DDR-0003). Nothing here reads time, randomness, or the environment.
+notation (DDR-0003). typed is a list of typed-conversion entries (DDR-0005),
+emitted only when the recipe sets "typed": true. Nothing here reads time,
+randomness, or the environment.
 """
 
 import itertools
@@ -132,6 +134,74 @@ def resolve(text, plain, tag):
     raise ValueError(tag)
 
 
+# ---- typed conversion (spec 8) ----------------------------------------------
+INT_TARGETS = [("u8", 0, 2 ** 8 - 1), ("u16", 0, 2 ** 16 - 1), ("u32", 0, 2 ** 32 - 1),
+               ("u64", 0, 2 ** 64 - 1), ("u128", 0, U128_MAX), ("i8", -(2 ** 7), 2 ** 7 - 1),
+               ("i16", -(2 ** 15), 2 ** 15 - 1), ("i32", -(2 ** 31), 2 ** 31 - 1),
+               ("i64", -(2 ** 63), 2 ** 63 - 1), ("i128", I128_MIN, 2 ** 127 - 1)]
+TYPE_ERROR = {"phase": "typed", "kind": "type"}
+
+
+def _f64(v):
+    return struct.unpack(">d", bytes.fromhex(v["bits"]))[0]
+
+
+def typed_number(v, target):
+    """Convert a resolved value into a numeric target. Returns ("result"|"error", payload)."""
+    for name, lo, hi in INT_TARGETS:
+        if name == target:
+            if v["t"] != "int":
+                return "error", TYPE_ERROR
+            n = int(v["v"])
+            if not lo <= n <= hi:
+                return "error", {"phase": "typed", "kind": "integer_out_of_range"}
+            return "result", v
+    if v["t"] == "int":  # an integer converts to a float target only if exactly representable
+        n = int(v["v"])
+        if target == "f64":
+            return ("result", FLT(float(n))) if float(n) == n else ("error", TYPE_ERROR)
+        try:
+            f = struct.unpack(">f", struct.pack(">f", float(n)))[0]
+        except OverflowError:
+            return "error", TYPE_ERROR
+        return ("result", {"t": "float32", "bits": struct.pack(">f", f).hex()}) if f == n else ("error", TYPE_ERROR)
+    if v["t"] != "float":
+        return "error", TYPE_ERROR
+    if target == "f64":
+        return "result", v
+    x = _f64(v)
+    if math.isnan(x):
+        return "result", {"t": "float32", "bits": "7fc00000"}
+    try:  # struct rounds to nearest, ties to even; a finite overflow raises
+        return "result", {"t": "float32", "bits": struct.pack(">f", x).hex()}
+    except OverflowError:
+        return "error", {"phase": "typed", "kind": "float_out_of_range"}
+
+
+def typed_scalar(v, target):
+    if target == "bool":
+        return ("result", v) if v["t"] == "bool" else ("error", TYPE_ERROR)
+    if target == "string":
+        return ("result", v) if v["t"] == "str" else ("error", TYPE_ERROR)
+    if target == "option-bool":
+        if v["t"] == "null":
+            return "result", {"t": "none"}
+        return ("result", v) if v["t"] == "bool" else ("error", TYPE_ERROR)
+    return typed_number(v, target)
+
+
+def typed_entries(path, targets, resolved=None, failure=None):
+    """Typed entries for one node. A generic-load failure carries over unchanged (DDR-0005)."""
+    out = []
+    for target in targets:
+        if failure is not None:
+            kind, payload = "error", failure
+        else:
+            kind, payload = typed_scalar(resolved, target)
+        out.append({"path": list(path), "target": target, kind: payload})
+    return out
+
+
 # ---- booleans ---------------------------------------------------------------
 def case_variants(w):
     out = set()
@@ -213,7 +283,10 @@ def wrap(pos, v):
     return v
 
 
-def gen_booleans():
+BOOL_TARGETS = ["bool", "string", "option-bool"]
+
+
+def gen_booleans(typed=False):
     n = 0
     for word, style, tag, pos in itertools.product(WORDS, STYLES, TAGS, POSITIONS):
         d = document(word, style, tag, pos)
@@ -223,15 +296,19 @@ def gen_booleans():
         n += 1
         rid = "b%05d" % n
         if not valid:
-            yield rid, "syntax", y, {"error": {"phase": "syntax"}}
+            yield rid, "syntax", y, {"error": {"phase": "syntax"}}, []
             continue
         text = block_text(word, style) if style in BLOCK else word
+        probe = typed and pos == "block_value"
         try:
             v = resolve(text, style == "plain", tag)
         except Fail as f:
-            yield rid, "scalar-resolution", y, {"error": f.error}
+            yield rid, "scalar-resolution", y, {"error": f.error}, \
+                typed_entries(["k"], BOOL_TARGETS, failure=f.error) if probe else []
             continue
-        yield rid, "scalar-resolution", y, {"documents": [wrap(pos, v)]}
+        # A retained tag is neither bool, str, nor null, so it never converts here (spec 8).
+        entries = typed_entries(["k"], BOOL_TARGETS, resolved=v) if probe else []
+        yield rid, "scalar-resolution", y, {"documents": [wrap(pos, v)]}, entries
 
 
 # ---- collisions (spec 5.1, 5.2) ---------------------------------------------
@@ -244,9 +321,9 @@ def gen_collisions():
         n += 1
         rid = "c%05d" % n
         if v1 == v2:  # key equality over these scalar kinds is value equality
-            yield rid, "duplicate-keys", y, {"error": {"phase": "structure", "kind": "duplicate_key"}}
+            yield rid, "duplicate-keys", y, {"error": {"phase": "structure", "kind": "duplicate_key"}}, []
         else:
-            yield rid, "duplicate-keys", y, {"documents": [{"t": "map", "entries": [[v1, INT(1)], [v2, INT(2)]]}]}
+            yield rid, "duplicate-keys", y, {"documents": [{"t": "map", "entries": [[v1, INT(1)], [v2, INT(2)]]}]}, []
 
 
 # ---- numbers ----------------------------------------------------------------
@@ -266,7 +343,10 @@ NUM_TEXTS = [
 NUM_FORMS = [("plain", None), ("double", None), ("double", "!!int"), ("plain", "!!float"), ("plain", "!!str")]
 
 
-def gen_numbers():
+NUM_TARGETS = [name for name, _, _ in INT_TARGETS] + ["f32", "f64"]
+
+
+def gen_numbers(typed=False):
     n = 0
     for t in NUM_TEXTS:
         for style, tag in NUM_FORMS:
@@ -276,13 +356,18 @@ def gen_numbers():
             try:
                 v = resolve(t, style == "plain", tag)
             except Fail as f:
-                yield rid, "numeric-resolution", y, {"error": f.error}
+                yield rid, "numeric-resolution", y, {"error": f.error}, \
+                    typed_entries(["k"], NUM_TARGETS, failure=f.error) if typed else []
                 continue
-            yield rid, "numeric-resolution", y, {"documents": [wrap("block_value", v)]}
+            yield rid, "numeric-resolution", y, {"documents": [wrap("block_value", v)]}, \
+                typed_entries(["k"], NUM_TARGETS, resolved=v) if typed else []
 
 
 FAMILIES = {"booleans": gen_booleans, "collisions": gen_collisions, "numbers": gen_numbers}
 
 
 def generate(parameters):
-    return FAMILIES[parameters["family"]]()
+    family = FAMILIES[parameters["family"]]
+    if parameters.get("typed"):
+        return family(typed=True)
+    return family()

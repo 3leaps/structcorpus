@@ -197,6 +197,43 @@ class TestCaseRejections(CaseRepo):
         self.mutate(idx, lambda c: c["expectations"]["events"].update({"events": ["+STR", "-STR"]}))
         self.assertRejected("must not list events")
 
+    def add_typed(self, **entry):
+        base = {"profile": "yaml-core", "profile_revision": 1, "path": ["enabled"], "target": "bool"}
+        base.update(entry)
+        self.mutate(0, lambda c: c["expectations"].setdefault("typed", []).append({k: v for k, v in base.items() if v is not None}))
+
+    def test_typed_valid(self):
+        self.add_typed(result={"t": "bool", "v": True})
+        self.assertEqual(self.errors(), [])
+
+    def test_typed_unknown_profile(self):
+        self.add_typed(profile_revision=9, result={"t": "bool", "v": True})
+        self.assertRejected("unknown profile")
+
+    def test_typed_unknown_target(self):
+        self.add_typed(target="u7", result={"t": "bool", "v": True})
+        self.assertRejected("unknown typed target")
+
+    def test_typed_both_result_and_error(self):
+        self.add_typed(result={"t": "bool", "v": True}, error={"phase": "typed"})
+        self.assertRejected("exactly one of result or error")
+
+    def test_typed_neither(self):
+        self.add_typed()
+        self.assertRejected("exactly one of result or error")
+
+    def test_typed_error_phase(self):
+        self.add_typed(error={"phase": "runtime"})
+        self.assertRejected("unknown error phase")
+
+    def test_typed_bad_path(self):
+        self.add_typed(path=["k", -1], result={"t": "bool", "v": True})
+        self.assertRejected("typed path")
+
+    def test_typed_bool_in_path(self):
+        self.add_typed(path=[True], result={"t": "bool", "v": True})
+        self.assertRejected("typed path")
+
     def located(self):
         return next(i for i, c in enumerate(self.cases) if "locations" in c["expectations"])
 

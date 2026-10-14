@@ -1,6 +1,6 @@
 {
   "schema_version": "recipe/v1",
-  "revision": 1,
+  "revision": 2,
   "format": "yaml",
   "dialect": "yaml-1.2.2",
   "generator": "generators/yaml/core_truth.py",
@@ -13,11 +13,12 @@
   "provenance": {
     "origin": "synthetic",
     "license": "MIT OR Apache-2.0",
-    "method": "Generated for structcorpus from the published yamlprims specification revision 1.0, sections 4 and 5.1."
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.0, sections 4, 5.1, and 8."
   },
   "id": "core-truth-booleans",
   "parameters": {
-    "family": "booleans"
+    "family": "booleans",
+    "typed": true
   },
   "execution": {
     "tier": "conformance",
@@ -27,11 +28,11 @@
   "expected": {
     "cases": 41154,
     "input_bytes": 695541,
-    "digest": "sha256:331b4b393d4384f682f31ffabf6d1fa83f81c866eb36512b564a6ff1afd86af1"
+    "digest": "sha256:1d9099933deb331176c9b81e70ace346cea527f95d61d870686323afe9e6994c"
   },
   "review": {
     "status": "provisional",
     "author": "devlead",
-    "rationale": "Every case variant of true/false/null and YAML 1.1 words across eight positions, nine scalar styles, and six tags; block scalars in flow context or as implicit keys are syntax errors."
+    "rationale": "Every case variant of true/false/null and YAML 1.1 words across eight positions, nine scalar styles, and six tags; block scalars in flow context or as implicit keys are syntax errors. Revision 2 adds typed-conversion expectations (DDR-0005)."
   }
 }

@@ -1,6 +1,6 @@
 {
   "schema_version": "recipe/v1",
-  "revision": 1,
+  "revision": 2,
   "format": "yaml",
   "dialect": "yaml-1.2.2",
   "generator": "generators/yaml/core_truth.py",
@@ -13,11 +13,12 @@
   "provenance": {
     "origin": "synthetic",
     "license": "MIT OR Apache-2.0",
-    "method": "Generated for structcorpus from the published yamlprims specification revision 1.0, sections 4 and 5.1."
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.0, sections 4, 5.1, and 8."
   },
   "id": "core-truth-numbers",
   "parameters": {
-    "family": "numbers"
+    "family": "numbers",
+    "typed": true
   },
   "execution": {
     "tier": "smoke",
@@ -27,11 +28,11 @@
   "expected": {
     "cases": 375,
     "input_bytes": 6855,
-    "digest": "sha256:21312be9809582115c0c48e2ffa507e53c9e0b875b530d32002a3350ec275a2a"
+    "digest": "sha256:5e1b1987063bdf2ca5bbc9ea838e25f678683688fa4a91dc29eba816e9534a2b"
   },
   "review": {
     "status": "provisional",
     "author": "devlead",
-    "rationale": "Integer and float resolution for sign, base, range, overflow, underflow, non-finite, and binary32-threshold texts in plain, quoted, and tagged forms."
+    "rationale": "Integer and float resolution for sign, base, range, overflow, underflow, non-finite, and binary32-threshold texts in plain, quoted, and tagged forms. Revision 2 adds typed-conversion expectations (DDR-0005)."
   }
 }

@@ -226,6 +226,8 @@ TIER_ORDER = ("smoke", "conformance", "stress")
 HYDRATE_MARKER = ".structcorpus-hydrated.json"
 EVENT_RE = re.compile(r"^[+=-][A-Z]{3}( .*)?$")
 ERROR_PHASES = {"input", "syntax", "resolution", "structure", "limit", "typed"}
+TYPED_TARGETS = {"u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128",
+                 "f32", "f64", "bool", "string", "option-bool"}
 
 
 def _read_json(root, rel, errors):
@@ -317,6 +319,18 @@ def check_case(root, rec, profiles, spans, errors, where):
         err = v.get("error")
         if err is not None and err.get("phase") not in ERROR_PHASES:
             errors.append("%s: unknown error phase %r" % (where, err.get("phase")))
+    for t in exp.get("typed", []):
+        if (t.get("profile"), t.get("profile_revision")) not in profiles:
+            errors.append("%s: unknown profile %s r%s" % (where, t.get("profile"), t.get("profile_revision")))
+        if t.get("target") not in TYPED_TARGETS:
+            errors.append("%s: unknown typed target %r" % (where, t.get("target")))
+        if ("result" in t) == ("error" in t):
+            errors.append("%s: a typed entry needs exactly one of result or error" % where)
+        elif "error" in t and t["error"].get("phase") not in ERROR_PHASES:
+            errors.append("%s: unknown error phase %r" % (where, t["error"].get("phase")))
+        path = t.get("path")
+        if not isinstance(path, list) or not all(isinstance(p, str) or (isinstance(p, int) and not isinstance(p, bool) and p >= 0) for p in path):
+            errors.append("%s: typed path must list mapping keys and sequence indexes" % where)
     loc = exp.get("locations")
     if loc is not None:
         conv = spans.get((loc.get("convention"), loc.get("convention_revision")))
@@ -460,7 +474,7 @@ def _recipe_cases(root, rel, doc):
     cap_bytes = doc["execution"]["max_output_bytes"]
     total = 0
     seen = set()
-    for count, (local_id, category, text, expectation) in enumerate(gen.generate(doc["parameters"]), 1):
+    for count, (local_id, category, text, expectation, typed) in enumerate(gen.generate(doc["parameters"]), 1):
         if count > cap_cases:
             raise HydrateError("%s: generator exceeded max_cases %d" % (rel, cap_cases))
         if not isinstance(local_id, str) or not COMPONENT_RE.match(local_id) or local_id in seen:
@@ -468,13 +482,16 @@ def _recipe_cases(root, rel, doc):
         seen.add(local_id)
         data = text.encode("utf-8") if isinstance(text, str) else bytes(text)
         cid = "%s.%s" % (doc["id"], local_id)
-        value = dict(expectation, profile=doc["profile"], profile_revision=doc["profile_revision"])
+        bind = {"profile": doc["profile"], "profile_revision": doc["profile_revision"]}
+        expectations = {"value": [dict(expectation, **bind)]}
+        if typed:
+            expectations["typed"] = [dict(entry, **bind) for entry in typed]
         record = {
             "schema_version": SUPPORTED["case"], "id": cid, "revision": doc["revision"],
             "format": doc["format"], "dialect": doc["dialect"], "category": category,
             "classifiers": doc["classifiers"], "provenance": doc["provenance"],
             "input": {"recipe": rel, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)},
-            "expectations": {"value": [value]},
+            "expectations": expectations,
             "execution": {"tier": doc["execution"]["tier"], "hazards": []},
             "review": doc["review"],
         }

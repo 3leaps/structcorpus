@@ -10,8 +10,9 @@ Release stages are defined in
 | Canonical JSON (JCS subset) serializer | Implemented |
 | Example cases: one per expectation layer, all `provisional` | Implemented (8) |
 | Scalar resolution, duplicate-key, and numeric truth generator (59,484 generated cases, `yamlprims-core` r1, provisional) | Implemented |
-| Typed-target expectations (integer and float widths, `bool`, `String`, `Option`) | Planned, 0.1 |
-| YAML hand-checked goldens and wire cases | Planned, 0.1 |
+| Typed-conversion expectations (DDR-0005): integer widths, `f32`, `f64`, `bool`, `string`, `option-bool` | Implemented (numbers and booleans r2) |
+| Hand-checked boundary goldens, including merge `apply` and `as-key` profiles (125 cases) | Implemented, provisional |
+| Wire-format goldens for a specific implementation's encoder | Not planned: an implementation's encoded output is its own conformance surface, not engine-neutral corpus material |
 | YAML adversarial families and bounded recipes | Planned, 0.2 |
 | Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |
 | `list`, recipe ladders, containment runner, stress tier | Planned, 0.2 |

@@ -19,7 +19,7 @@ def generate(parameters):
     n = parameters["n"]
     size = parameters.get("size", 1)
     for i in range(n):
-        yield "r%04d" % i, "scalar-resolution", "k: " + "x" * size + "\\n", {"documents": [{"t": "str", "v": "x"}]}
+        yield "r%04d" % i, "scalar-resolution", "k: " + "x" * size + "\\n", {"documents": [{"t": "str", "v": "x"}]}, []
 '''
 
 
@@ -36,9 +36,11 @@ class RecipeRepo(unittest.TestCase):
         os.makedirs(os.path.join(self.root, "recipes", "yaml"))
         with open(os.path.join(self.root, "generators", "yaml", "tiny.py"), "w") as fh:
             fh.write(GEN)
-        with open(os.path.join(REPO, "recipes", "yaml", "core-truth-numbers.r1.json")) as fh:
+        template = sorted(n for n in os.listdir(os.path.join(REPO, "recipes", "yaml"))
+                          if n.startswith("core-truth-numbers."))[-1]
+        with open(os.path.join(REPO, "recipes", "yaml", template)) as fh:
             self.recipe = json.load(fh)
-        self.recipe.update(id="tiny", generator="generators/yaml/tiny.py", parameters={"n": 5})
+        self.recipe.update(id="tiny", revision=1, generator="generators/yaml/tiny.py", parameters={"n": 5})
         self.recipe["execution"].update(max_cases=10)
         self.pin()
 
