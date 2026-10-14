@@ -33,17 +33,21 @@ output or touch the checkout.
 4. **`hydrate`** writes generated inputs and a canonical case manifest into a
    new output root:
    - it refuses a root that exists, lies inside the checkout, or contains it;
-   - it enforces per-recipe caps and the tier's aggregate cap, counting both
-     input and manifest bytes, while it writes;
+   - it enforces per-recipe caps and the tier's aggregate cap while it
+     writes; both count input bytes and manifest bytes;
    - it builds in a temporary sibling directory and renames it into place only
      after every recipe's count, bytes, and digest match the recorded values;
-   - on any failure it removes only the temporary directory it created, and
-     never deletes a path the caller supplied;
+   - on any failure, including a failed final rename, it removes only the
+     temporary directory it created, and never deletes a path the caller
+     supplied;
    - a completion marker is written last, so an interrupted run is never
      mistaken for a complete one.
 5. **`verify`** rechecks a hydrated root: the marker, each input's hash and
-   length, canonical manifest lines, and each recipe's digest against the
-   checkout's recipe.
+   length, canonical manifest lines, and each recipe's digest. **The hydrated
+   output is untrusted.** Every recipe that appears in the manifest is checked
+   against the digest and count recorded in the checkout's recipe. The marker's
+   recipe list must match the manifest's exactly; it can never narrow what is
+   checked. A recipe the checkout does not have, or an empty manifest, fails.
 6. **Generators** are Python 3.9 standard library, deterministic, and free of
    time, randomness, environment, and set-order dependence (ADR-0002). They
    receive only the recipe's parameters.

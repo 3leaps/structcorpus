@@ -56,7 +56,7 @@ class RecipeRepo(unittest.TestCase):
         """Record the expected counts and digest from a dry generation."""
         self.recipe["expected"] = {"cases": 1, "input_bytes": 0, "digest": "sha256:" + "0" * 64}
         lines, nbytes = [], 0
-        for _, data, rec in corpus._recipe_cases(self.root, "recipes/yaml/tiny.r1.json", self.recipe):
+        for _, data, rec, _line in corpus._recipe_cases(self.root, "recipes/yaml/tiny.r1.json", self.recipe):
             lines.append(corpus.canonical_json(rec).encode())
             nbytes += len(data)
         self.recipe["expected"] = {"cases": len(lines), "input_bytes": nbytes, "digest": corpus.recipe_digest(lines)}
@@ -66,7 +66,7 @@ class RecipeRepo(unittest.TestCase):
         rel = os.path.relpath(path, self.root).replace(os.sep, "/")
         self.recipe["expected"] = {"cases": 1, "input_bytes": 0, "digest": "sha256:" + "0" * 64}
         lines, nbytes = [], 0
-        for _, data, rec in corpus._recipe_cases(self.root, rel, self.recipe):
+        for _, data, rec, _line in corpus._recipe_cases(self.root, rel, self.recipe):
             lines.append(corpus.canonical_json(rec).encode())
             nbytes += len(data)
         self.recipe["expected"] = {"cases": len(lines), "input_bytes": nbytes, "digest": corpus.recipe_digest(lines)}
@@ -114,6 +114,21 @@ class TestHydrate(RecipeRepo):
                 self.assertEqual(rec["classifiers"], {"sensitivity": "0-public", "access-tier": "public"})
                 self.assertEqual(rec["input"]["recipe"], "recipes/yaml/tiny.r1.json")
 
+    def test_failed_publication_leaves_nothing(self):
+        real = corpus.os.rename
+
+        def boom(src, dst):
+            raise OSError("injected rename failure")
+
+        corpus.os.rename = boom
+        try:
+            with self.assertRaises(OSError):
+                corpus.hydrate(self.root, self.out(), "smoke")
+        finally:
+            corpus.os.rename = real
+        self.assertFalse(os.path.exists(self.out()))
+        self.assertEqual(self.leftovers(), [])
+
     def test_refuses_existing_output(self):
         os.makedirs(self.out())
         with self.assertRaises(corpus.HydrateError) as ctx:
@@ -149,15 +164,23 @@ class TestHydrate(RecipeRepo):
         self.save()
         self.assertRefused("max_output_bytes")
 
+    def test_recipe_cap_counts_manifest_bytes(self):
+        # Inputs alone fit the recipe cap; inputs plus manifest lines do not.
+        inputs = self.recipe["expected"]["input_bytes"]
+        self.recipe["execution"]["max_output_bytes"] = inputs + 10
+        self.save()
+        self.assertRefused("max_output_bytes")
+
     def test_tier_aggregate_cap(self):
         # Each of two recipes fits the tier on its own; together they exceed it.
         first = copy.deepcopy(self.recipe)
         self.recipe.update(id="tiny2")
         self.save_as = os.path.join(self.root, "recipes", "yaml", "tiny2.r1.json")
         self.pin_to(self.save_as)
-        per_recipe = self.recipe["expected"]["input_bytes"]
+        per_recipe = sum(len(d) + len(l) + 1 for _, d, _r, l in
+                         corpus._recipe_cases(self.root, "recipes/yaml/tiny2.r1.json", self.recipe))
         saved = corpus.TIER_CAPS["smoke"]
-        cap = 1500
+        cap = per_recipe + per_recipe // 2  # one recipe fits; two do not
         corpus.TIER_CAPS["smoke"] = cap
         for doc, path in ((first, self.path()), (self.recipe, self.save_as)):
             doc["execution"]["max_output_bytes"] = cap
@@ -222,6 +245,55 @@ class TestVerify(RecipeRepo):
         with open(path, "wb") as fh:
             fh.write(b"\n".join(lines) + b"\n")
         self.assertTrue(any("expected digest" in e for e in corpus.verify(self.root, self.out())))
+
+    def edit_marker(self, fn):
+        path = os.path.join(self.out(), corpus.HYDRATE_MARKER)
+        with open(path, "rb") as fh:
+            summary = json.loads(fh.read())
+        fn(summary)
+        with open(path, "wb") as fh:
+            fh.write(corpus.canonical_json(summary).encode())
+
+    def change_first_expectation(self):
+        path = os.path.join(self.out(), "cases.jsonl")
+        with open(path, "rb") as fh:
+            lines = fh.read().splitlines()
+        rec = json.loads(lines[0])
+        rec["expectations"]["value"][0]["documents"][0]["v"] = "y"
+        lines[0] = corpus.canonical_json(rec).encode()
+        with open(path, "wb") as fh:
+            fh.write(b"\n".join(lines) + b"\n")
+
+    def test_cleared_marker_recipes_cannot_hide_changes(self):
+        self.change_first_expectation()
+        self.edit_marker(lambda s: s.update(recipes=[]))
+        self.assertTrue(any("expected digest" in e or "not listed" in e for e in corpus.verify(self.root, self.out())))
+
+    def test_marker_recipe_removed_cannot_hide_changes(self):
+        self.change_first_expectation()
+        self.edit_marker(lambda s: s.pop("recipes"))
+        self.assertNotEqual(corpus.verify(self.root, self.out()), [])
+
+    def test_manifest_recipe_unknown_to_checkout(self):
+        path = os.path.join(self.out(), "cases.jsonl")
+        with open(path, "rb") as fh:
+            lines = fh.read().splitlines()
+        rec = json.loads(lines[0])
+        rec["input"]["recipe"] = "recipes/yaml/forged.r1.json"
+        lines[0] = corpus.canonical_json(rec).encode()
+        with open(path, "wb") as fh:
+            fh.write(b"\n".join(lines) + b"\n")
+        self.assertTrue(any("forged" in e for e in corpus.verify(self.root, self.out())))
+
+    def test_marker_lists_recipe_with_no_cases(self):
+        self.edit_marker(lambda s: s["recipes"].append({"recipe": "recipes/yaml/tiny.r1.json"}))
+        self.assertNotEqual(corpus.verify(self.root, self.out()), [])
+
+    def test_emptied_manifest_and_marker(self):
+        with open(os.path.join(self.out(), "cases.jsonl"), "wb"):
+            pass
+        self.edit_marker(lambda s: s.update(recipes=[]))
+        self.assertTrue(any("no cases" in e for e in corpus.verify(self.root, self.out())))
 
     def test_dropped_case(self):
         path = os.path.join(self.out(), "cases.jsonl")

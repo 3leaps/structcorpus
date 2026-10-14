@@ -467,12 +467,9 @@ def _recipe_cases(root, rel, doc):
             raise HydrateError("%s: generator produced invalid or repeated id %r" % (rel, local_id))
         seen.add(local_id)
         data = text.encode("utf-8") if isinstance(text, str) else bytes(text)
-        total += len(data)
-        if total > cap_bytes:
-            raise HydrateError("%s: generator exceeded max_output_bytes %d" % (rel, cap_bytes))
         cid = "%s.%s" % (doc["id"], local_id)
         value = dict(expectation, profile=doc["profile"], profile_revision=doc["profile_revision"])
-        yield cid, data, {
+        record = {
             "schema_version": SUPPORTED["case"], "id": cid, "revision": doc["revision"],
             "format": doc["format"], "dialect": doc["dialect"], "category": category,
             "classifiers": doc["classifiers"], "provenance": doc["provenance"],
@@ -481,6 +478,11 @@ def _recipe_cases(root, rel, doc):
             "execution": {"tier": doc["execution"]["tier"], "hazards": []},
             "review": doc["review"],
         }
+        line = canonical_json(record).encode("utf-8")
+        total += len(data) + len(line) + 1  # input bytes plus its manifest line
+        if total > cap_bytes:
+            raise HydrateError("%s: generator exceeded max_output_bytes %d" % (rel, cap_bytes))
+        yield cid, data, record, line
 
 
 def recipe_digest(case_lines):
@@ -514,10 +516,10 @@ def hydrate(root, out, tier, recipe_filter=None):
     work = tempfile.mkdtemp(prefix=".structcorpus-", dir=parent)
     try:
         summary = _hydrate_into(root, work, recipes, selected, tier)
+        os.rename(work, out)
     except BaseException:
         _remove_own_tree(work)
         raise
-    os.rename(work, out)
     return summary
 
 
@@ -546,8 +548,7 @@ def _hydrate_into(root, work, recipes, selected, tier):
             doc = recipes[rel]
             lines = []
             in_bytes = 0
-            for cid, data, record in _recipe_cases(root, rel, doc):
-                line = canonical_json(record).encode("utf-8")
+            for cid, data, record, line in _recipe_cases(root, rel, doc):
                 written += len(data) + len(line) + 1  # inputs and manifest both count
                 if written > budget:
                     raise HydrateError("aggregate output exceeds the %s cap %d bytes" % (tier, budget))
@@ -601,13 +602,23 @@ def verify(root, out):
                 continue
             if hashlib.sha256(data).hexdigest() != rec["input"]["sha256"] or len(data) != rec["input"]["bytes"]:
                 errors.append("%s: input does not match manifest sha256/bytes" % rec["id"])
-    for entry in summary.get("recipes", []):
-        rel = entry["recipe"]
+    # The marker is part of the untrusted output: it may only agree with the
+    # manifest, never decide what gets checked. Every recipe present in the
+    # manifest is verified against the checkout's recorded digest.
+    listed = summary.get("recipes")
+    listed_rels = [e.get("recipe") for e in listed] if isinstance(listed, list) and \
+        all(isinstance(e, dict) for e in listed) else None
+    if listed_rels is None or sorted(listed_rels) != sorted(by_recipe) or len(set(listed_rels)) != len(listed_rels):
+        errors.append("marker recipe list does not match the recipes in the manifest")
+    if not by_recipe:
+        errors.append("manifest contains no cases")
+    for rel in sorted(by_recipe):
         doc = recipes.get(rel)
         if doc is None:
             errors.append("%s: recipe not present in this checkout" % rel)
             continue
-        if recipe_digest(by_recipe.get(rel, [])) != doc["expected"]["digest"]:
+        exp = doc["expected"]
+        if len(by_recipe[rel]) != exp["cases"] or recipe_digest(by_recipe[rel]) != exp["digest"]:
             errors.append("%s: hydrated cases do not match the recipe's expected digest" % rel)
     return errors
 
