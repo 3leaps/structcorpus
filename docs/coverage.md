@@ -9,10 +9,11 @@ Release stages are defined in
 | Case, profile, span-convention, and upstream-lock schemas (DDR-0003) | Implemented |
 | Canonical JSON (JCS subset) serializer | Implemented |
 | Example cases: one per expectation layer, all `provisional` | Implemented (8) |
-| YAML scalar resolution and duplicate-key truth generator | Planned, 0.1 |
+| Scalar resolution, duplicate-key, and numeric truth generator (59,484 generated cases, `yamlprims-core` r1, provisional) | Implemented |
+| Typed-target expectations (integer and float widths, `bool`, `String`, `Option`) | Planned, 0.1 |
 | YAML hand-checked goldens and wire cases | Planned, 0.1 |
 | YAML adversarial families and bounded recipes | Planned, 0.2 |
-| Minimal bounded hydrate / verify for the truth generator | Planned, 0.1 |
+| Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |
 | `list`, recipe ladders, containment runner, stress tier | Planned, 0.2 |
 | yaml-test-suite import, Windows/Linux parity matrix | Planned, 0.3 |
 | Binding lifetime and streaming input surfaces | Unsupported until a consumer exposes them |

@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/3leaps/structcorpus/schemas/recipe.v1.schema.json",
+  "title": "structcorpus generator recipe v1 (DDR-0004)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "revision", "format", "dialect", "generator", "parameters", "profile", "profile_revision", "classifiers", "provenance", "execution", "expected", "review"],
+  "properties": {
+    "schema_version": {"const": "recipe/v1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "format": {"enum": ["yaml"]},
+    "dialect": {"enum": ["yaml-1.2.2"]},
+    "generator": {"type": "string", "pattern": "^generators/yaml/[a-z0-9_]+\\.py$"},
+    "parameters": {"type": "object", "minProperties": 1, "additionalProperties": {"type": ["string", "integer", "boolean"]}},
+    "profile": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "profile_revision": {"type": "integer", "minimum": 1},
+    "classifiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sensitivity", "access-tier"],
+      "properties": {"sensitivity": {"const": "0-public"}, "access-tier": {"const": "public"}}
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "license", "method"],
+      "properties": {
+        "origin": {"const": "synthetic"},
+        "license": {"type": "string", "minLength": 1},
+        "method": {"type": "string", "minLength": 1, "maxLength": 500}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "max_cases", "max_output_bytes"],
+      "properties": {
+        "tier": {"enum": ["smoke", "conformance", "stress"]},
+        "max_cases": {"type": "integer", "minimum": 1},
+        "max_output_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cases", "input_bytes", "digest"],
+      "properties": {
+        "cases": {"type": "integer", "minimum": 1},
+        "input_bytes": {"type": "integer", "minimum": 0},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "author", "rationale"],
+      "properties": {
+        "status": {"enum": ["provisional", "reviewed"]},
+        "author": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+        "reviewer": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+        "method": {"type": "string"},
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 1000}
+      },
+      "if": {"properties": {"status": {"const": "reviewed"}}},
+      "then": {"required": ["reviewer", "method"]}
+    }
+  }
+}

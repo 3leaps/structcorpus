@@ -35,6 +35,9 @@ for f in "$root"/manifests/span-conventions/*.json; do
   check span-convention.v1.schema.json "$f" pass || status=1
 done
 check upstreams-lock.v1.schema.json "$root/manifests/upstreams.lock.json" pass || status=1
+for f in "$root"/recipes/*/*.json; do
+  check recipe.v1.schema.json "$f" pass || status=1
+done
 neg=0
 for f in "$root"/tests/schema-negative/*.json; do
   neg=$((neg + 1))

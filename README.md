@@ -35,7 +35,14 @@ python3 tools/corpus.py validate          # repository, metadata, and case rules
 python3 -m unittest discover -s tests     # corpus-tool tests
 python3 tools/corpus.py canon FILE.json   # canonical (JCS) form of a metadata file
 tools/schema-check.sh                     # full JSON Schema check (needs goneat)
+python3 tools/corpus.py hydrate --tier conformance --output /tmp/structcorpus-out
+python3 tools/corpus.py verify --root /tmp/structcorpus-out
 ```
+
+Large tables are generated, not committed: each recipe under `recipes/` pins
+its generator, parameters, case count, and a digest of the exact output
+([DDR-0004](docs/decisions/DDR-0004-recipes-and-hydration.md)). Hydration
+writes only to a new directory outside the checkout.
 
 Cases live in `manifests/cases.jsonl` and reference inputs under
 `fixtures/yaml/`. Profiles are in `manifests/profiles/` and span conventions
@@ -43,8 +50,7 @@ in `manifests/span-conventions/`; the record formats are defined in
 [DDR-0003](docs/decisions/DDR-0003-case-record-and-value-notation.md) and
 `schemas/`.
 
-`hydrate` and `verify` will arrive with the first generated material, and
-`list` with the recipe ladders. See [PDR-0001](docs/decisions/PDR-0001-staged-releases.md) for the
+`list` will arrive with the recipe ladders. See [PDR-0001](docs/decisions/PDR-0001-staged-releases.md) for the
 release stages.
 
 ## Status
