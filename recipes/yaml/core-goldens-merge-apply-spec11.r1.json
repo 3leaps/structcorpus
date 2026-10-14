@@ -1,0 +1,37 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/core_goldens.py",
+  "profile": "yamlprims-core-merge-apply",
+  "profile_revision": 2,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Hand-written for structcorpus from the published yamlprims specification revision 1.1, sections 4, 5, and 8; each expected value is written out, not computed."
+  },
+  "id": "core-goldens-merge-apply-spec11",
+  "parameters": {
+    "merge_policy": "apply"
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 500,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 8,
+    "input_bytes": 261,
+    "digest": "sha256:9e5f96e1de38ef62e34582c64f1df9e0795b64ddf2f1f128ccb6e68085d51793"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Hand-checked merge goldens with merge keys applied: precedence of explicit keys, source order, sequence sources, malformed and repeated directives, and quoted or string-tagged '<<'. Bound to the revision 1.1 profile; expectations are unchanged from the revision 1.0 recipe because no input in this set is affected by 1.1/E-1 to E-4."
+  }
+}

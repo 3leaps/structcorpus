@@ -89,6 +89,9 @@ class CaseRepo(unittest.TestCase):
         self.save()
 
 
+SPEC_V11_URL = "https://github.com/3leaps/yamlprims/blob/spec-v1.1/docs/spec/yamlprims-spec.md"
+
+
 class TestShippedCases(CaseRepo):
     def test_shipped_manifests_are_valid(self):
         self.assertEqual(self.errors(), [])
@@ -98,6 +101,60 @@ class TestShippedCases(CaseRepo):
         for c in self.cases:
             layers.update(c["expectations"])
         self.assertEqual(layers, {"events", "value", "locations"})
+
+
+class TestEventNotation(CaseRepo):
+    """Expected events use the pinned yaml-test-suite notation exactly."""
+
+    def case(self, cid):
+        return next(c for c in self.cases if c["id"] == cid)
+
+    def test_flow_sequence_control_exact_events(self):
+        # A flow sequence starts with "+SEQ []" in the pinned notation, not a bare "+SEQ".
+        self.assertEqual(
+            self.case("yaml.syntax.flow-indented-control")["expectations"]["events"]["events"],
+            [
+                "+STR",
+                "+DOC ---",
+                "+MAP",
+                "=VAL :flow",
+                "+SEQ []",
+                "=VAL :a",
+                "=VAL :b",
+                "=VAL :c",
+                "-SEQ",
+                "-MAP",
+                "-DOC",
+                "-STR",
+            ],
+        )
+
+    def test_flow_markers_match_flow_openers(self):
+        # For inputs without quotes or comments, every "[" or "{" opens a flow collection,
+        # so the number of flow-marked start events must equal the number of openers.
+        checked = 0
+        for c in self.cases:
+            ev = c["expectations"]["events"]
+            if ev["status"] != "valid":
+                continue
+            with open(os.path.join(REPO, *c["input"]["path"].split("/")), "rb") as fh:
+                text = fh.read().decode("utf-8")
+            if any(ch in text for ch in "\"'#"):
+                continue
+            openers = text.count("[") + text.count("{")
+            marked = sum(1 for e in ev["events"] if e.startswith(("+SEQ []", "+MAP {}")))
+            self.assertEqual(marked, openers, c["id"])
+            checked += 1
+        self.assertGreater(checked, 10)
+
+    def test_flow_marker_precedes_properties(self):
+        # Upstream order is the style marker, then anchor and tag: "+SEQ [] &a".
+        for c in self.cases:
+            for e in c["expectations"]["events"].get("events", []):
+                if e.startswith(("+SEQ ", "+MAP ")):
+                    rest = e[5:]
+                    if "[]" in rest or "{}" in rest:
+                        self.assertTrue(rest.startswith(("[]", "{}")), (c["id"], e))
 
 
 class TestCaseRejections(CaseRepo):
@@ -260,8 +317,27 @@ class TestCaseRejections(CaseRepo):
         self.mutate(self.located(), lambda c: c["expectations"]["locations"]["spans"][0].update({"event_index": 999}))
         self.assertRejected("out of range")
 
+    def test_r2_convention_rejects_undefined_kind(self):
+        idx = next(
+            i
+            for i, c in enumerate(self.cases)
+            if c["expectations"].get("locations", {}).get("convention_revision") == 2
+        )
+        undefined = {"event_index": 2, "start": 0, "end": 0}
+        self.mutate(idx, lambda c: c["expectations"]["locations"]["spans"].append(undefined))
+        self.assertRejected("undefined in scalar-alias r2")
+
+    def test_r2_profiles_cite_tagged_spec(self):
+        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
+            if name.endswith(".r2.json") and name.startswith("yamlprims-core"):
+                with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                    prof = json.load(fh)
+                urls = [c["url"] for c in prof["cites"]]
+                self.assertIn(SPEC_V11_URL, urls, name)
+                self.assertEqual(prof["policy"]["flow_indentation"], "strict", name)
+
     def test_unknown_span_convention(self):
-        self.mutate(self.located(), lambda c: c["expectations"]["locations"].update({"convention_revision": 2}))
+        self.mutate(self.located(), lambda c: c["expectations"]["locations"].update({"convention_revision": 999}))
         self.assertRejected("unknown span convention")
 
     def test_reviewer_must_differ(self):
