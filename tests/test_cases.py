@@ -90,6 +90,9 @@ class CaseRepo(unittest.TestCase):
         self.save()
 
 
+SPEC_V11_URL = "https://github.com/3leaps/yamlprims/blob/spec-v1.1/docs/spec/yamlprims-spec.md"
+
+
 class TestShippedCases(CaseRepo):
     def test_shipped_manifests_are_valid(self):
         self.assertEqual(self.errors(), [])
@@ -254,9 +257,13 @@ class TestCaseRejections(CaseRepo):
         self.assertRejected("out of range")
 
     def test_r2_convention_rejects_undefined_kind(self):
-        idx = next(i for i, c in enumerate(self.cases)
-                   if c["expectations"].get("locations", {}).get("convention_revision") == 2)
-        self.mutate(idx, lambda c: c["expectations"]["locations"]["spans"].append({"event_index": 2, "start": 0, "end": 0}))
+        idx = next(
+            i
+            for i, c in enumerate(self.cases)
+            if c["expectations"].get("locations", {}).get("convention_revision") == 2
+        )
+        undefined = {"event_index": 2, "start": 0, "end": 0}
+        self.mutate(idx, lambda c: c["expectations"]["locations"]["spans"].append(undefined))
         self.assertRejected("undefined in scalar-alias r2")
 
     def test_r2_profiles_cite_tagged_spec(self):
@@ -265,7 +272,7 @@ class TestCaseRejections(CaseRepo):
                 with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
                     prof = json.load(fh)
                 urls = [c["url"] for c in prof["cites"]]
-                self.assertIn("https://github.com/3leaps/yamlprims/blob/spec-v1.1/docs/spec/yamlprims-spec.md", urls, name)
+                self.assertIn(SPEC_V11_URL, urls, name)
                 self.assertEqual(prof["policy"]["flow_indentation"], "strict", name)
 
     def test_unknown_span_convention(self):
