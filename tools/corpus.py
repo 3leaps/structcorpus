@@ -11,7 +11,7 @@ Subcommands:
 Full JSON Schema validation runs separately in CI with an external validator;
 the checks here are the admission gate a consumer can run with python3 alone.
 
-`list` arrives with the recipe ladders (PDR-0001, stage 0.2).
+  list       Recipes and committed cases by tier, with counts, bytes, and hazards.
 """
 
 import argparse
@@ -242,6 +242,20 @@ TIER_ORDER = ("smoke", "conformance", "stress")
 HYDRATE_MARKER = ".structcorpus-hydrated.json"
 EVENT_RE = re.compile(r"^[+=-][A-Z]{3}( .*)?$")
 ERROR_PHASES = {"input", "syntax", "resolution", "structure", "limit", "typed"}
+LIMIT_FIELDS = (
+    "max_input_bytes",
+    "max_depth",
+    "max_nodes",
+    "max_expanded_nodes",
+    "max_alias_events",
+    "max_owned_bytes",
+    "max_scalar_bytes",
+    "max_key_bytes",
+    "max_mapping_entries",
+    "max_documents",
+    "max_output_bytes",
+    "max_warnings",
+)
 TYPED_TARGETS = {
     "u8",
     "u16",
@@ -396,9 +410,30 @@ def check_case(root, rec, profiles, spans, errors, where):
         errors.append("%s: a reviewed case needs a reviewer distinct from its author" % where)
 
 
+def check_profile_limits(rel, prof, errors):
+    """The cited specification's Options::validate rules, applied to a profile's explicit limits."""
+    lim = prof.get("limits")
+    if lim is None:
+        return
+    if not isinstance(lim, dict) or set(lim) != set(LIMIT_FIELDS):
+        errors.append("%s: limits must name exactly the specification's %d Limits fields" % (rel, len(LIMIT_FIELDS)))
+        return
+    bad = [k for k in LIMIT_FIELDS if not isinstance(lim[k], int) or isinstance(lim[k], bool) or lim[k] < 1]
+    if bad:
+        errors.append("%s: every limit must be an integer >= 1 (%s)" % (rel, ", ".join(bad)))
+        return
+    if lim["max_depth"] > 255:
+        errors.append("%s: max_depth must be <= 255" % rel)
+    for k in ("max_scalar_bytes", "max_key_bytes"):
+        if lim[k] > lim["max_owned_bytes"]:
+            errors.append("%s: %s must be <= max_owned_bytes" % (rel, k))
+
+
 def check_manifests(root):
     errors = []
     profiles = _load_registry(root, "profiles", "profile", errors)
+    for (pid, rev), prof in sorted(profiles.items()):
+        check_profile_limits("manifests/profiles/%s.r%d.json" % (pid, rev), prof, errors)
     spans = _load_registry(root, "span-conventions", "span", errors)
     lock_rel = "manifests/upstreams.lock.json"
     if os.path.exists(os.path.join(root, lock_rel)):
@@ -509,6 +544,8 @@ def check_recipe(root, rel, doc, profiles, errors):
         not review.get("reviewer") or review.get("reviewer") == review.get("author")
     ):
         errors.append("%s: a reviewed recipe needs a reviewer distinct from its author" % rel)
+    if ex.get("hazards") and not ex.get("budgets"):
+        errors.append("%s: a recipe with hazards must declare per-case budgets (SecDR-0002)" % rel)
 
 
 class HydrateError(Exception):
@@ -550,7 +587,7 @@ def _recipe_cases(root, rel, doc):
             "provenance": doc["provenance"],
             "input": {"recipe": rel, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)},
             "expectations": expectations,
-            "execution": {"tier": doc["execution"]["tier"], "hazards": []},
+            "execution": _case_execution(doc["execution"]),
             "review": doc["review"],
         }
         line = canonical_json(record).encode("utf-8")
@@ -558,6 +595,14 @@ def _recipe_cases(root, rel, doc):
         if total > cap_bytes:
             raise HydrateError("%s: generator exceeded max_output_bytes %d" % (rel, cap_bytes))
         yield cid, data, record, line
+
+
+def _case_execution(ex):
+    """A generated case inherits its recipe's tier, hazards, and per-case budgets."""
+    out = {"tier": ex["tier"], "hazards": list(ex.get("hazards", []))}
+    if ex.get("budgets"):
+        out["budgets"] = dict(ex["budgets"])
+    return out
 
 
 def recipe_digest(case_lines):
@@ -728,6 +773,84 @@ def cmd_verify(args):
     return 0
 
 
+def list_entries(root, tier, show_budgets=False):
+    """Recipes and committed cases selected by tier, as plain dicts (stable order)."""
+    allowed = TIER_ORDER[: TIER_ORDER.index(tier) + 1]
+    errors = []
+    rows = []
+    for rel, doc in sorted(load_recipes(root, errors).items()):
+        ex = doc["execution"]
+        if ex["tier"] not in allowed:
+            continue
+        row = {
+            "kind": "recipe",
+            "name": rel,
+            "tier": ex["tier"],
+            "profile": "%s r%d" % (doc["profile"], doc["profile_revision"]),
+            "cases": doc["expected"]["cases"],
+            "input_bytes": doc["expected"]["input_bytes"],
+            "hazards": list(ex.get("hazards", [])),
+            "budgets": dict(ex.get("budgets", {})),
+            "max_output_bytes": ex["max_output_bytes"],
+        }
+        if show_budgets:
+            row["output_bytes"] = sum(len(d) + len(line) + 1 for _, d, _r, line in _recipe_cases(root, rel, doc))
+        rows.append(row)
+    path = os.path.join(root, "manifests", "cases.jsonl")
+    if os.path.exists(path):
+        with open(path, "rb") as fh:
+            for line in fh.read().split(b"\n"):
+                if not line.strip():
+                    continue
+                rec = load_json_strict(line)
+                ex = rec["execution"]
+                if ex["tier"] not in allowed:
+                    continue
+                rows.append(
+                    {
+                        "kind": "case",
+                        "name": rec["id"],
+                        "tier": ex["tier"],
+                        "profile": ",".join(
+                            sorted(
+                                {
+                                    "%s r%d" % (v["profile"], v["profile_revision"])
+                                    for v in rec["expectations"].get("value", [])
+                                }
+                            )
+                        )
+                        or "-",
+                        "cases": 1,
+                        "input_bytes": rec["input"]["bytes"],
+                        "hazards": list(ex.get("hazards", [])),
+                        "budgets": dict(ex.get("budgets", {})),
+                    }
+                )
+    return rows
+
+
+def cmd_list(args):
+    rows = list_entries(args.root, args.tier, args.show_budgets)
+    if args.json:
+        sys.stdout.write(canonical_json({"tier": args.tier, "entries": rows}) + "\n")
+        return 0
+    for r in rows:
+        extra = ""
+        if args.show_budgets and r["kind"] == "recipe":
+            extra = "  output %d/%d" % (r["output_bytes"], r["max_output_bytes"])
+        hz = ",".join(r["hazards"]) or "-"
+        print(
+            "%-6s %-11s %7d cases %10d bytes  hazards=%s%s  %s"
+            % (r["kind"], r["tier"], r["cases"], r["input_bytes"], hz, extra, r["name"])
+        )
+    cases = sum(r["cases"] for r in rows)
+    print("list: %d entries, %d cases (tier %s and below)" % (len(rows), cases, args.tier))
+    if args.show_budgets:
+        out = sum(r.get("output_bytes", 0) for r in rows if r["kind"] == "recipe")
+        print("list: generated output %d of %d bytes (%s tier cap)" % (out, TIER_CAPS[args.tier], args.tier))
+    return 0
+
+
 def cmd_canon(args):
     with open(args.file, "rb") as fh:
         value = load_json_strict(fh.read())
@@ -773,6 +896,12 @@ def main(argv=None):
     p_ver.add_argument("--root", required=True, help="hydrated output root")
     p_ver.add_argument("--repo", dest="root_dir", default=ROOT, help=argparse.SUPPRESS)
     p_ver.set_defaults(func=cmd_verify)
+    p_list = sub.add_parser("list", help="list recipes and cases by tier")
+    p_list.add_argument("--tier", choices=TIER_ORDER, default="conformance")
+    p_list.add_argument("--show-budgets", action="store_true", help="also generate recipes to report output bytes")
+    p_list.add_argument("--json", action="store_true", help="canonical JSON output")
+    p_list.add_argument("--root", default=ROOT, help=argparse.SUPPRESS)
+    p_list.set_defaults(func=cmd_list)
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         parser.print_help(sys.stderr)

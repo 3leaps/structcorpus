@@ -35,6 +35,7 @@ python3 tools/corpus.py validate          # repository, metadata, and case rules
 python3 tools/corpus.py hydrate --tier conformance --output /tmp/structcorpus-out
 python3 tools/corpus.py verify --root /tmp/structcorpus-out
 python3 tools/corpus.py canon FILE.json   # canonical (JCS) form of a metadata file
+python3 tools/corpus.py list --tier stress --show-budgets   # what each tier contains
 ```
 
 Maintainers run `make check` for everything non-mutating: formatting, lint,
