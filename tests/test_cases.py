@@ -65,6 +65,7 @@ class CaseRepo(unittest.TestCase):
         shutil.copy(os.path.join(REPO, ".gitattributes"), self.root)
         with open(os.path.join(self.root, "manifests", "cases.jsonl"), "rb") as fh:
             self.cases = [json.loads(line) for line in fh.read().splitlines() if line.strip()]
+        self.base = [json.loads(json.dumps(c)) for c in self.cases]
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -331,10 +332,29 @@ class TestNodeLocationRejections(CaseRepo):
         )
         self.assertRejected("does not resolve")
 
-    def test_raw_control_in_event_text(self):
+    def with_event_char(self, ch):
+        """A fresh copy of the cases where the escaped-NUL case's scalar event holds ch raw."""
+        self.cases = [json.loads(json.dumps(c)) for c in self.base]
         idx = next(i for i, c in enumerate(self.cases) if c["id"] == "yaml.input.escaped-nul")
-        self.mutate(idx, lambda c: c["expectations"]["events"]["events"].__setitem__(4, '=VAL "a\x00b'))
-        self.assertRejected("raw control character")
+        self.cases[idx]["expectations"]["events"]["events"][4] = '=VAL "a' + ch + "b"
+        self.save()
+        return self.errors()
+
+    def test_raw_escaped_characters_in_event_text(self):
+        # The notation escapes NUL, BS, TAB, LF, and CR; a raw one is a notation error.
+        for ch in "\x00\x08\x09\x0a\x0d":
+            with self.subTest(ch=hex(ord(ch))):
+                errs = self.with_event_char(ch)
+                # A raw LF already fails the event pattern; the others reach the escape check.
+                self.assertTrue(
+                    [e for e in errs if "raw NUL, BS, TAB, LF, or CR" in e or "notation" in e], hex(ord(ch))
+                )
+
+    def test_other_control_characters_stay_raw(self):
+        # BEL, VT, FF, ESC, and DEL are printed as themselves in the pinned notation.
+        for ch in "\x07\x0b\x0c\x1b\x7f":
+            with self.subTest(ch=hex(ord(ch))):
+                self.assertFalse([e for e in self.with_event_char(ch) if "event text" in e], hex(ord(ch)))
 
     def test_item_index_out_of_range(self):
         self.mutate(

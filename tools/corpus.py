@@ -241,7 +241,10 @@ TIER_CAPS = {"smoke": 16 * 1024 * 1024, "conformance": 128 * 1024 * 1024, "stres
 TIER_ORDER = ("smoke", "conformance", "stress")
 HYDRATE_MARKER = ".structcorpus-hydrated.json"
 EVENT_RE = re.compile(r"^[+=-][A-Z]{3}( .*)?$")
-EVENT_RAW_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+# The pinned notation escapes exactly these five control characters (as \0, \b,
+# \t, \n, \r) and the backslash; every other character, including BEL, VT, FF,
+# ESC, and DEL, appears in event text as itself.
+EVENT_ESCAPED_RAW_RE = re.compile(r"[\x00\x08\x09\x0a\x0d]")
 ERROR_PHASES = {"input", "syntax", "resolution", "structure", "limit", "typed"}
 LIMIT_FIELDS = (
     "max_input_bytes",
@@ -355,9 +358,10 @@ def check_case(root, rec, profiles, spans, errors, where):
             ):
                 errors.append("%s: valid events need an event list in yaml-test-suite notation" % where)
                 event_list = None
-            elif any(EVENT_RAW_CONTROL_RE.search(e) for e in event_list):
-                # The notation writes control characters as escapes (\0, \b, \t, \n, \r), never raw.
-                errors.append("%s: event text contains a raw control character; use the notation's escapes" % where)
+            elif any(EVENT_ESCAPED_RAW_RE.search(e) for e in event_list):
+                errors.append(
+                    "%s: event text contains a raw NUL, BS, TAB, LF, or CR; the notation escapes these" % where
+                )
         elif events.get("status") == "invalid":
             if "events" in events:
                 errors.append("%s: invalid input must not list events" % where)
