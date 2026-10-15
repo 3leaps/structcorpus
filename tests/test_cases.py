@@ -247,6 +247,26 @@ class TestSpec13(CaseRepo):
             self.assertEqual((v["profile"], v["profile_revision"]), ("yamlprims-core", 3))
             self.assertEqual(v["documents"][0]["entries"][0][1], {"t": "str", "v": want}, data)
 
+    def test_bom_only_utf32_is_valid_format_but_fails_input_gate(self):
+        [c] = [c for c in self.cases if c["id"] == "yaml.input.utf32be-bom-only"]
+        self.assertEqual(
+            c["expectations"]["events"], {"notation": "yaml-test-suite", "status": "valid", "events": ["+STR", "-STR"]}
+        )
+        self.assertEqual([v["error"] for v in c["expectations"]["value"]], [{"phase": "input", "kind": "invalid_utf8"}])
+
+    def test_escaped_nul_event_text_and_value(self):
+        # The event text spells the escape (backslash, zero); the decoded value holds U+0000.
+        [c] = [c for c in self.cases if c["id"] == "yaml.input.escaped-nul"]
+        self.assertEqual(c["expectations"]["events"]["events"][4], '=VAL "a\\0b')
+        [v] = c["expectations"]["value"]
+        self.assertEqual(v["documents"][0]["entries"][0][1], {"t": "str", "v": "a\u0000b"})
+
+    def test_nonzero_eof_anchors_are_in_convention_scope(self):
+        with open(os.path.join(self.root, "manifests", "span-conventions", "yamlprims-node.r1.json")) as fh:
+            conv = json.load(fh)
+        self.assertNotIn("zero-width nodes only", conv["rules"]["scope"])
+        self.assertIn("[3, 4)", conv["rules"]["non-zero-width-block-scalar"])
+
     def test_f32_example(self):
         [c] = [c for c in self.cases if c["id"] == "yaml.typed.f32-double-rounding"]
         typed = {t["target"]: t["result"] for t in c["expectations"]["typed"]}
@@ -310,6 +330,11 @@ class TestNodeLocationRejections(CaseRepo):
             lambda c: c["expectations"]["node_locations"]["spans"][0].update(path=[{"key": 0}]),
         )
         self.assertRejected("does not resolve")
+
+    def test_raw_control_in_event_text(self):
+        idx = next(i for i, c in enumerate(self.cases) if c["id"] == "yaml.input.escaped-nul")
+        self.mutate(idx, lambda c: c["expectations"]["events"]["events"].__setitem__(4, '=VAL "a\x00b'))
+        self.assertRejected("raw control character")
 
     def test_item_index_out_of_range(self):
         self.mutate(

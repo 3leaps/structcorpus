@@ -53,8 +53,18 @@ that historical profiles keep their bindings.
    `selects: value-node` and lists `defined_nodes`. A convention is never both.
    Event-keyed `locations` are unchanged.
 4. **Node convention `yamlprims-node` r1** defines only what revision 1.3
-   pins: zero-width omitted or empty scalars, tag wrappers that share their
-   span, and zero-width collections. Spans of non-empty nodes remain undefined.
+   pins:
+   - omitted scalars;
+   - block scalars with no source content line, including the two whose span
+     at end of input is not zero-width (`k: |\n\n` and `k: |\n`, both
+     `[3, 4)`);
+   - tag wrappers that share such a scalar's span;
+   - zero-width collections.
+
+   "Empty" here means empty in the source, not in the decoded value: a
+   keep-chomping block scalar with no content line can decode to line feeds,
+   and a zero-width mapping can hold an entry. Spans of other nodes remain
+   undefined.
 5. **Generated material under 1.3.** These recipes get copies bound to the new
    profiles:
    - numeric truth;
@@ -78,8 +88,8 @@ that historical profiles keep their bindings.
 - A consumer qualifying against specification 1.3 has 1.3-bound expectations
   for the anchor rows, the end-of-input keep-chomping values, the f32 conversion
   example, the UTF-8 input surface, and every copied recipe.
-- Spans of non-empty nodes, collection extents, and error envelopes are not yet
-  asserted.
+- Spans of nodes with source content, collection extents, and error envelopes
+  are not yet asserted.
 - Old pins reproduce their original expectations byte for byte.
 - A later convention revision can define more node kinds without changing the
   meaning of existing node spans.

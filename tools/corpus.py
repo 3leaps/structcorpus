@@ -241,6 +241,7 @@ TIER_CAPS = {"smoke": 16 * 1024 * 1024, "conformance": 128 * 1024 * 1024, "stres
 TIER_ORDER = ("smoke", "conformance", "stress")
 HYDRATE_MARKER = ".structcorpus-hydrated.json"
 EVENT_RE = re.compile(r"^[+=-][A-Z]{3}( .*)?$")
+EVENT_RAW_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 ERROR_PHASES = {"input", "syntax", "resolution", "structure", "limit", "typed"}
 LIMIT_FIELDS = (
     "max_input_bytes",
@@ -354,6 +355,9 @@ def check_case(root, rec, profiles, spans, errors, where):
             ):
                 errors.append("%s: valid events need an event list in yaml-test-suite notation" % where)
                 event_list = None
+            elif any(EVENT_RAW_CONTROL_RE.search(e) for e in event_list):
+                # The notation writes control characters as escapes (\0, \b, \t, \n, \r), never raw.
+                errors.append("%s: event text contains a raw control character; use the notation's escapes" % where)
         elif events.get("status") == "invalid":
             if "events" in events:
                 errors.append("%s: invalid input must not list events" % where)
