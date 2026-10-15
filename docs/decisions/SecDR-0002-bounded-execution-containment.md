@@ -61,3 +61,54 @@ resident-memory limit anyway.
   execution stays disabled until those tests pass on the host.
 - This record describes controls only, not the parser defects those controls
   defend against.
+
+## Implementation note (runner)
+
+`tools/runner.py` implements this record with one container per hostile case:
+- a memory limit equal to the swap limit (no swap);
+- a process limit;
+- no network;
+- a read-only root and a capped tmpfs;
+- all capabilities dropped and `no-new-privileges` set;
+- logging off;
+- a runner label;
+- input on stdin.
+
+**Deadlines and output**
+- The wall-clock deadline starts before any input is written, and input is
+  written on its own thread. A case that never reads its input is still
+  stopped at the limit.
+- A stop kills the whole container, background children included. The
+  runner then asks the runtime whether the container is still running.
+- stdout and stderr share one captured-output budget, so the documented cap
+  is the total. A case is stopped as soon as its output passes the cap.
+
+**Before a case starts**
+- The runner reads the container's configuration back and refuses to run
+  (`blocked`) if any setting differs: memory, swap, processes, network,
+  read-only root, log driver, capabilities, security options, tmpfs, or
+  label.
+- The runtime must report cgroup v2. A missing or stopped runtime, or a
+  runtime out of storage, is `blocked`, with storage exhaustion named
+  explicitly.
+
+**Cleanup**
+- Every container is removed when its case ends.
+- Containers left behind by an interrupted runner carry the runner label;
+  `runner.py cleanup` removes those and nothing else.
+
+Peak memory is recorded as `not_measured`. It is a measurement, not a gate,
+and no supported post-exit source exists for it yet.
+
+**Self-test** (`make stress-selftest`) proves each control on the host:
+- memory, wall time, output (one stream and both), processes, network,
+  read-only root, and tmpfs;
+- that a background child is stopped at the wall limit;
+- that a case with large unread input is stopped at the wall limit;
+- that no runner containers remain afterwards.
+
+Every limit that produces a crash is paired with a positive control. The
+control runs the identical command with exactly that limit lifted, and the
+command must succeed. Lifting a limit is internal to the self-test and cannot
+be reached when cases run. The self-test is part of `make prepush`, the
+pre-push and PR-final gate; CI does not run containers.
