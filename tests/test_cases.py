@@ -138,7 +138,11 @@ class TestEventNotation(CaseRepo):
             if ev["status"] != "valid":
                 continue
             with open(os.path.join(REPO, *c["input"]["path"].split("/")), "rb") as fh:
-                text = fh.read().decode("utf-8")
+                data = fh.read()
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError:
+                continue  # a valid non-UTF-8 stream (for example UTF-16); counting bytes says nothing
             if any(ch in text for ch in "\"'#"):
                 continue
             openers = text.count("[") + text.count("{")
@@ -146,6 +150,19 @@ class TestEventNotation(CaseRepo):
             self.assertEqual(marked, openers, c["id"])
             checked += 1
         self.assertGreater(checked, 10)
+
+    def test_bin_extension_marks_non_text_inputs(self):
+        # DDR-0001 section 3: inputs with invalid UTF-8 or NUL use .bin, and only those.
+        for c in self.cases:
+            path = c["input"]["path"]
+            with open(os.path.join(REPO, *path.split("/")), "rb") as fh:
+                data = fh.read()
+            try:
+                data.decode("utf-8")
+                text = b"\x00" not in data
+            except UnicodeDecodeError:
+                text = False
+            self.assertEqual(path.endswith(".bin"), not text, c["id"])
 
     def test_flow_marker_precedes_properties(self):
         # Upstream order is the style marker, then anchor and tag: "+SEQ [] &a".

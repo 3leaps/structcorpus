@@ -1,0 +1,37 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/tag_trees.py",
+  "profile": "yamlprims-core",
+  "profile_revision": 2,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.1, sections 3, 4.4, and 5.1; each value is written out in the generator."
+  },
+  "id": "tag-trees",
+  "parameters": {
+    "set": "values"
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 500,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 9,
+    "input_bytes": 67791,
+    "digest": "sha256:55374de06ac53f56fd374bb88b8b8fed686ca261e045cce2f25b0cd8f30e52b7"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Tag-heavy inputs: flow sequences of 10 to 10,000 tiny tagged scalars, tags on collections, keys, and values, core tags beside non-core ones (core tags add no wrapper; the non-specific tag gives a String), keys that differ only by tag, and one 1000-byte tag."
+  }
+}
