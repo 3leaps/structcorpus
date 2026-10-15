@@ -1,0 +1,37 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/merge_pairs.py",
+  "profile": "yamlprims-core-merge-apply",
+  "profile_revision": 2,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.1, section 5.3 (merge_keys = Apply)."
+  },
+  "id": "merge-pairs",
+  "parameters": {
+    "ladder": "1,10,100,1000"
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 500,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 24,
+    "input_bytes": 163422,
+    "digest": "sha256:d9c31c3fc04bc26a8f343a4fdecfb7efdf1561e4410324f22652c6a250196369"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Pairs of inputs that differ only in whether the merge source is an alias or an inline mapping, at 1 to 1000 source entries: the directive before and after a shadowing explicit key, and a sequence of two overlapping sources. Both inputs of a pair have the same expected value; their budgets are measured, not expected."
+  }
+}

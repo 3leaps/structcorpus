@@ -18,7 +18,9 @@ Release stages are defined in
 | Boolean and collision truth tables bound to r2 profiles | Planned: when the r1 profiles retire (conformance tier budget) |
 | Empty-node and collection span conventions | Planned |
 | Wire-format goldens for a specific implementation's encoder | Not planned: an implementation's encoded output is its own conformance surface, not engine-neutral corpus material |
-| YAML adversarial families and bounded recipes | Planned, 0.2 |
+| Non-hazardous adversarial recipes: exact binary64/binary32 rounding thresholds, double-quoted escapes, inline versus aliased merge pairs, tag-heavy trees and tag-wrapper limit boundaries (312 generated cases, provisional) | Implemented |
+| Committed adversarial cases: alias validity, block-scalar chomping and indentation with LF and CRLF, location precision (BOM, multibyte, tab, lone CR, U+2028), diagnostics inputs, the UTF-8 input gate (NUL, invalid UTF-8, UTF-16, UTF-32), and explicit and composite keys (58 cases, provisional) | Implemented |
+| Hazardous adversarial recipes (alias fan-out, many keys, late failure, depth) | Planned, 0.2 |
 | Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |
 | Containment runner with self-tests (SecDR-0002): bounded execution of a caller-supplied command | Implemented |
 | Running hostile YAML cases through a parser driver | Planned, 0.2 (needs the hazardous recipes and a consumer driver) |
