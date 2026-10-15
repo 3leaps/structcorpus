@@ -1,0 +1,28 @@
+{
+  "schema_version": "profile/v1",
+  "id": "yamlprims-core",
+  "revision": 3,
+  "dialect": "yaml-1.2.2",
+  "scalar_schema": "core",
+  "policy": {
+    "duplicate_keys": "reject",
+    "merge_keys": "reject",
+    "integer_range": "i128-u128",
+    "documents": "single",
+    "unknown_tags": "tagged-str",
+    "flow_indentation": "strict"
+  },
+  "cites": [
+    {
+      "title": "yamlprims specification",
+      "url": "https://github.com/3leaps/yamlprims/blob/spec-v1.3/docs/spec/yamlprims-spec.md",
+      "revision": "1.3 (tag spec-v1.3, commit 4cf97b2d4efec16b6b41ea6e1acb83164a76aa45, sha256 0ea53c3564c8907cebdb036d7383a840e767de395395b786c6d8ff5d8f86152d)"
+    },
+    {
+      "title": "YAML Ain't Markup Language (YAML) version 1.2",
+      "url": "https://yaml.org/spec/1.2.2/",
+      "revision": "1.2.2 (2021-10-01)"
+    }
+  ],
+  "description": "Default options of the yamlprims specification revision 1.3: YAML 1.2.2 Core resolution (section 4), integers limited to i128::MIN..=u128::MAX, explicit core tags directing resolution, non-core tags retained with a raw string inner, duplicate keys rejected (section 5.2), strict flow indentation in every parsing pass (section 9), merge directives rejected (section 5.3 default), and single-document entrypoints (section 5.5): an empty stream is one Null document. Error kinds are the specification's snake_case ErrorKind names. Revision 1.3 adds the UTF-8-only input surface (1.3/E-2), states that f32 rounds the binary64 value (1.3/E-3), and pins empty-scalar anchors and EOF keep-chomping values (1.3/E-1, E-4)."
+}

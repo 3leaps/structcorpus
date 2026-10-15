@@ -1,0 +1,37 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/core_goldens.py",
+  "profile": "yamlprims-core-merge-as-key",
+  "profile_revision": 3,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Hand-written for structcorpus from the published yamlprims specification revision 1.3, sections 4, 5, and 8; each expected value is written out, not computed."
+  },
+  "id": "core-goldens-merge-as-key-spec13",
+  "parameters": {
+    "merge_policy": "as-key"
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 500,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 1,
+    "input_bytes": 25,
+    "digest": "sha256:1d632d594d40d314d311c2bd39187a3908c97812c2f065d27d70d08431f75686"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Hand-checked merge golden with a recognized directive kept as the ordinary key '<<'. Bound to the revision 1.3 profile; expectations are identical to the revision 1.1 recipe because no input in this set is affected by 1.2/E-1 to E-3 or 1.3/E-1 to E-4."
+  }
+}

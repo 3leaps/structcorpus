@@ -16,7 +16,9 @@ Release stages are defined in
 | Specification 1.1 cases: document cardinality, strict flow indentation, block-scalar span ends (12 cases) | Implemented, provisional |
 | Numeric truth and goldens bound to r2 profiles (smoke tier) | Implemented |
 | Boolean and collision truth tables bound to r2 profiles | Planned: when the r1 profiles retire (conformance tier budget) |
-| Empty-node and collection span conventions | Planned |
+| yamlprims specification 1.3 profiles (`yamlprims-core` r3 and variants, `yamlprims-core-limits` r2), node-span convention `yamlprims-node` r1 with `node_locations` (DDR-0008) | Implemented |
+| Specification 1.2 and 1.3 anchor rows (19 cases, 21 node spans), end-of-input keep chomping, f32 conversion path, UTF-8 input surface; generated recipes copied to the 1.3 profiles | Implemented, provisional |
+| Spans of non-empty nodes and collection extents | Planned |
 | Wire-format goldens for a specific implementation's encoder | Not planned: an implementation's encoded output is its own conformance surface, not engine-neutral corpus material |
 | Non-hazardous adversarial recipes: exact binary64/binary32 rounding thresholds, double-quoted escapes, inline versus aliased merge pairs, tag-heavy trees and tag-wrapper limit boundaries (312 generated cases, provisional) | Implemented |
 | Committed adversarial cases: alias validity, block-scalar chomping and indentation with LF and CRLF, location precision (BOM, multibyte, tab, lone CR, U+2028), diagnostics inputs, the UTF-8 input gate (NUL, invalid UTF-8, UTF-16, UTF-32), and explicit and composite keys (58 cases, provisional) | Implemented |

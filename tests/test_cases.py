@@ -100,7 +100,7 @@ class TestShippedCases(CaseRepo):
         layers = set()
         for c in self.cases:
             layers.update(c["expectations"])
-        self.assertEqual(layers, {"events", "value", "locations"})
+        self.assertEqual(layers, {"events", "value", "typed", "locations", "node_locations"})
 
 
 class TestEventNotation(CaseRepo):
@@ -172,6 +172,213 @@ class TestEventNotation(CaseRepo):
                     rest = e[5:]
                     if "[]" in rest or "{}" in rest:
                         self.assertTrue(rest.startswith(("[]", "{}")), (c["id"], e))
+
+
+SPEC_V13_URL = "https://github.com/3leaps/yamlprims/blob/spec-v1.3/docs/spec/yamlprims-spec.md"
+
+
+class TestSpec13(CaseRepo):
+    """Exact rows from the yamlprims specification revision 1.3 tables, written out here."""
+
+    # (input bytes, node path, span) from section 7.2: nine revision 1.2 rows, ten revision 1.3 rows.
+    ANCHORS = [
+        (b"k: |\n  \n  \nx: 1\n", [{"value": 0}], (10, 10)),
+        (b"k: |\n\nx: 1\n", [{"value": 0}], (4, 4)),
+        (b"k: |\n\n", [{"value": 0}], (3, 4)),
+        (b"k: |\n", [{"value": 0}], (3, 4)),
+        (b"k: >-\n\nx: 1\n", [{"value": 0}], (5, 5)),
+        (b"k: |+\n\n\nx: 1\n", [{"value": 0}], (5, 5)),
+        (b"k: |\r\n\r\nx: 1\r\n", [{"value": 0}], (4, 4)),
+        (b"k: | # c\n\nx: 1\n", [{"value": 0}], (8, 8)),
+        (b"- |\n\n- a\n", [{"item": 0}], (3, 3)),
+        (b"\xef\xbb\xbfk: |\n\nx: 1\n", [{"value": 0}], (7, 7)),
+        (b"k: |\r\rx: 1\r", [{"value": 0}], (4, 4)),
+        (b"k: !t |\n\nx: 1\n", [{"value": 0}], (7, 7)),
+        (b"k: !t |\n\nx: 1\n", [{"value": 0}, {"inner": True}], (7, 7)),
+        (b"k: !!str |\n\nx: 1\n", [{"value": 0}], (10, 10)),
+        (b"k: &a |\n\nx: 1\n", [{"value": 0}], (7, 7)),
+        (b"a: 0\nk: |\n\nx: 1\n", [{"value": 1}], (9, 9)),
+        (b"p:\n  ? a\n  ? b\n", [{"value": 0}, {"value": 0}], (8, 8)),
+        (b"p:\n  k: |\n\n  x: 1\n", [{"value": 0}, {"value": 0}], (9, 9)),
+        (b"?\n\n :\n", [{"key": 0}], (4, 4)),
+        (b"?\n !m\n :\n", [{"key": 0}], (7, 7)),
+        (b"?\n !m\n :\n", [{"key": 0}, {"inner": True}], (7, 7)),
+    ]
+    KEEP_EOF = {b"k: |+\n\n   ": "\n", b"k: |+\n\n   \n": "\n\n", b"k: |+\r\n\r\n   ": "\n"}
+
+    def by_input(self):
+        out = {}
+        for c in self.cases:
+            with open(os.path.join(REPO, *c["input"]["path"].split("/")), "rb") as fh:
+                out.setdefault(fh.read(), []).append(c)
+        return out
+
+    def test_every_anchor_row_is_pinned_exactly(self):
+        found = self.by_input()
+        for data, path, (start, end) in self.ANCHORS:
+            cases = [c for c in found.get(data, []) if "node_locations" in c["expectations"]]
+            self.assertEqual(len(cases), 1, data)
+            nl = cases[0]["expectations"]["node_locations"]
+            self.assertEqual((nl["profile"], nl["profile_revision"]), ("yamlprims-core", 3), data)
+            spans = [(s["start"], s["end"]) for s in nl["spans"] if s["path"] == path and s["document"] == 0]
+            self.assertEqual(spans, [(start, end)], (data, path))
+
+    def test_anchor_count_matches_spec(self):
+        anchored = [c for c in self.cases if "node_locations" in c["expectations"]]
+        self.assertEqual(len(anchored), 19)
+        self.assertEqual(sum(len(c["expectations"]["node_locations"]["spans"]) for c in anchored), len(self.ANCHORS))
+
+    def test_wrapper_and_inner_share_span(self):
+        for c in self.cases:
+            nl = c["expectations"].get("node_locations")
+            if not nl:
+                continue
+            spans = {canonical(s["path"]): (s["start"], s["end"]) for s in nl["spans"]}
+            for path, span in spans.items():
+                inner = canonical(json.loads(path) + [{"inner": True}])
+                if inner in spans:
+                    self.assertEqual(spans[inner], span, c["id"])
+
+    def test_keep_chomping_at_eof(self):
+        found = self.by_input()
+        for data, want in self.KEEP_EOF.items():
+            [c] = found[data]
+            [v] = c["expectations"]["value"]
+            self.assertEqual((v["profile"], v["profile_revision"]), ("yamlprims-core", 3))
+            self.assertEqual(v["documents"][0]["entries"][0][1], {"t": "str", "v": want}, data)
+
+    def test_f32_example(self):
+        [c] = [c for c in self.cases if c["id"] == "yaml.typed.f32-double-rounding"]
+        typed = {t["target"]: t["result"] for t in c["expectations"]["typed"]}
+        self.assertEqual(typed["f32"], {"t": "float32", "bits": "3f800000"})
+        self.assertEqual(typed["f64"], {"t": "float", "bits": "3ff0000010000000"})
+
+    def test_utf8_surface_examples(self):
+        found = self.by_input()
+        expect = {
+            b"\x00\x00\xfe\xff": {"phase": "input", "kind": "invalid_utf8"},
+            "k: v\n".encode("utf-16-le"): {"phase": "syntax"},
+        }
+        for data, err in expect.items():
+            [c] = found[data]
+            r3 = [v for v in c["expectations"]["value"] if v["profile_revision"] == 3]
+            self.assertEqual([v["error"] for v in r3], [err], data)
+
+    def test_r3_profiles_cite_spec_13(self):
+        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
+            if name.endswith(".r3.json") or name == "yamlprims-core-limits.r2.json":
+                with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                    prof = json.load(fh)
+                self.assertEqual(prof["cites"][0]["url"], SPEC_V13_URL, name)
+                self.assertIn("4cf97b2d4efec16b6b41ea6e1acb83164a76aa45", prof["cites"][0]["revision"], name)
+
+    def test_older_profiles_keep_their_binding(self):
+        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
+            with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                prof = json.load(fh)
+            if prof["id"].startswith("yamlprims-core") and not (
+                name.endswith(".r3.json") or name == "yamlprims-core-limits.r2.json"
+            ):
+                self.assertNotIn(SPEC_V13_URL, [c["url"] for c in prof["cites"]], name)
+
+
+class TestNodeLocationRejections(CaseRepo):
+    def anchored(self, cid="yaml.anchors.tagged"):
+        return next(i for i, c in enumerate(self.cases) if c["id"] == cid)
+
+    def test_path_must_resolve(self):
+        self.mutate(
+            self.anchored(), lambda c: c["expectations"]["node_locations"]["spans"][0].update(path=[{"value": 5}])
+        )
+        self.assertRejected("does not resolve")
+
+    def test_inner_needs_tagged(self):
+        self.mutate(
+            self.anchored("yaml.anchors.r12-blank-then-sibling"),
+            lambda c: c["expectations"]["node_locations"]["spans"][0].update(path=[{"value": 0}, {"inner": True}]),
+        )
+        self.assertRejected("does not resolve")
+
+    def test_inner_step_must_be_true(self):
+        path = [{"value": 0}, {"inner": False}]
+        self.mutate(self.anchored(), lambda c: c["expectations"]["node_locations"]["spans"][1].update(path=path))
+        self.assertRejected("does not resolve")
+
+    def test_key_step_needs_mapping(self):
+        self.mutate(
+            self.anchored("yaml.anchors.r12-seq-item"),
+            lambda c: c["expectations"]["node_locations"]["spans"][0].update(path=[{"key": 0}]),
+        )
+        self.assertRejected("does not resolve")
+
+    def test_item_index_out_of_range(self):
+        self.mutate(
+            self.anchored("yaml.anchors.r12-seq-item"),
+            lambda c: c["expectations"]["node_locations"]["spans"][0].update(path=[{"item": 2}]),
+        )
+        self.assertRejected("does not resolve")
+
+    def test_profile_bound_twice_is_ambiguous(self):
+        def twice(c):
+            c["expectations"]["value"].append(copy.deepcopy(c["expectations"]["value"][0]))
+
+        self.mutate(self.anchored(), twice)
+        self.assertRejected("need a value expectation with documents")
+
+    def test_profile_bound_to_error(self):
+        def error(c):
+            c["expectations"]["value"][0] = {
+                "profile": "yamlprims-core",
+                "profile_revision": 3,
+                "error": {"phase": "syntax"},
+            }
+
+        self.mutate(self.anchored(), error)
+        self.assertRejected("need a value expectation with documents")
+
+    def test_malformed_value_tree_does_not_crash(self):
+        def broken(c):
+            c["expectations"]["value"][0]["documents"][0]["entries"][0] = ["not-a-node"]
+
+        self.mutate(self.anchored(), broken)
+        self.assertRejected("does not resolve")
+
+    def test_leaf_that_is_not_a_node(self):
+        def leaf(c):
+            c["expectations"]["value"][0]["documents"][0]["entries"][0][1] = "not-a-node"
+
+        self.mutate(self.anchored(), leaf)
+        self.assertRejected("does not resolve")
+
+    def test_undefined_node_kind(self):
+        # The int value of x is not a kind the node convention defines.
+        self.mutate(
+            self.anchored(), lambda c: c["expectations"]["node_locations"]["spans"][0].update(path=[{"value": 1}])
+        )
+        self.assertRejected("int node spans are undefined in yamlprims-node r1")
+
+    def test_profile_must_have_documents(self):
+        self.mutate(self.anchored(), lambda c: c["expectations"]["node_locations"].update(profile_revision=2))
+        self.assertRejected("need a value expectation with documents")
+
+    def test_event_convention_is_not_a_node_convention(self):
+        self.mutate(
+            self.anchored(),
+            lambda c: c["expectations"]["node_locations"].update(convention="scalar-alias", convention_revision=2),
+        )
+        self.assertRejected("unknown node convention")
+
+    def test_span_outside_input(self):
+        self.mutate(self.anchored(), lambda c: c["expectations"]["node_locations"]["spans"][0].update(end=10**6))
+        self.assertRejected("node span [7, 1000000) outside input")
+
+    def test_document_out_of_range(self):
+        self.mutate(self.anchored(), lambda c: c["expectations"]["node_locations"]["spans"][0].update(document=1))
+        self.assertRejected("document 1 out of range")
+
+
+def canonical(value):
+    return corpus.canonical_json(value)
 
 
 class TestCaseRejections(CaseRepo):
@@ -346,7 +553,7 @@ class TestCaseRejections(CaseRepo):
 
     def test_r2_profiles_cite_tagged_spec(self):
         for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
-            if name.endswith(".r2.json") and name.startswith("yamlprims-core"):
+            if name.endswith(".r2.json") and name.startswith("yamlprims-core") and "-limits." not in name:
                 with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
                     prof = json.load(fh)
                 urls = [c["url"] for c in prof["cites"]]

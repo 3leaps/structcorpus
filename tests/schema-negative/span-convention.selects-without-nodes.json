@@ -1,0 +1,14 @@
+{
+ "schema_version": "span-convention/v1",
+ "id": "yamlprims-node",
+ "revision": 1,
+ "offset_unit": "utf8-byte",
+ "interval": "half-open",
+ "selects": "value-node",
+ "rules": {
+  "scope": "Node spans as defined by the yamlprims specification revision 1.3, section 7.2, for zero-width nodes only: omitted or empty scalars, retained tag wrappers sharing an empty scalar's span, and zero-width collections. Other node kinds and non-empty nodes are not defined by this revision. A span is selected by document index and a path into the profile's value tree; a path ending at a tagged node selects the wrapper, and an inner step selects the tagged node's inner node.",
+  "empty-scalar": "A zero-width omitted or empty scalar, including an empty block scalar, is normalized when its engine marker directly follows line breaks, or follows only ASCII-space indentation on its line after line breaks: step over that indentation, then place the span before the immediately preceding line breaks. Spaces on an earlier blank line stop the move. The point never moves before the end of the preceding sibling, the end of its key (for a mapping value), or its collection's start. An empty block scalar whose engine span is not zero-width keeps its start and uses the block scalar end rule.",
+  "tagged": "A retained tag wrapper and its inner scalar share the empty span and move together.",
+  "collection": "A zero-width collection, including one wrapped in a retained tag, keeps its anchor; its wrapper and inner collection share it."
+ }
+}

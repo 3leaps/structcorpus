@@ -1,0 +1,37 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/escapes.py",
+  "profile": "yamlprims-core",
+  "profile_revision": 3,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from YAML 1.2.2 sections 5.7 and 7.3.1 and the published yamlprims specification revision 1.3, section 4.1; each escape's decoded text is written out by hand."
+  },
+  "id": "escapes-spec13",
+  "parameters": {
+    "sets": "each,ladder,malformed"
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 500,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 119,
+    "input_bytes": 6668,
+    "digest": "sha256:11d8acc1ae272847f7873a7ee9e7a0d0d0806159f48cbe6cd85c537c2b27dfd7"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Every YAML 1.2.2 double-quoted escape, alone and inside text; escaped line breaks; escape-only scalars whose encoded and decoded lengths differ, up to 4 KiB; and every proper prefix of each hex escape, a non-hex digit inside one, undefined escape letters, and a backslash at end of input, all syntax errors. Bound to the revision 1.3 profile; expectations are identical to the revision 1.1 recipe because no input in this set is affected by 1.2/E-1 to E-3 or 1.3/E-1 to E-4."
+  }
+}

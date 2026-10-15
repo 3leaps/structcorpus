@@ -396,18 +396,88 @@ def check_case(root, rec, profiles, spans, errors, where):
                 if not isinstance(i, int) or not 0 <= i < len(event_list):
                     errors.append("%s: span event_index %r out of range" % (where, i))
                     continue
-                if event_list[i][:4] not in conv["defined_events"]:
+                if event_list[i][:4] not in conv.get("defined_events", []):
                     errors.append(
                         "%s: %s spans are undefined in %s r%d"
                         % (where, event_list[i][:4], conv["id"], conv["revision"])
                     )
                 if not 0 <= s.get("start", -1) <= s.get("end", -1) <= size:
                     errors.append("%s: span [%r, %r) outside input" % (where, s.get("start"), s.get("end")))
+    nodes = exp.get("node_locations")
+    if nodes is not None:
+        check_node_locations(nodes, exp.get("value", []), inp.get("bytes", 0), spans, errors, where)
     review = rec["review"] if isinstance(rec["review"], dict) else {}
     if review.get("status") == "reviewed" and (
         not review.get("reviewer") or review.get("reviewer") == review.get("author")
     ):
         errors.append("%s: a reviewed case needs a reviewer distinct from its author" % where)
+
+
+def select_node(root, path):
+    """Follow a node path (DDR-0008) into a yaml-value/1 tree. Returns the node or None."""
+    node = root
+    if not isinstance(path, list):
+        return None
+    for step in path:
+        if not isinstance(node, dict) or not isinstance(step, dict) or len(step) != 1:
+            return None
+        ((kind, arg),) = step.items()
+        if kind == "inner":
+            if arg is not True:
+                return None
+            node = node.get("inner")  # absent unless the node is tagged
+        elif kind in ("key", "value"):
+            entries = node.get("entries") if node.get("t") == "map" else None
+            if not isinstance(arg, int) or isinstance(arg, bool) or entries is None or not 0 <= arg < len(entries):
+                return None
+            entry = entries[arg]
+            if not isinstance(entry, list) or len(entry) != 2:
+                return None
+            node = entry[0 if kind == "key" else 1]
+        elif kind == "item":
+            items = node.get("items") if node.get("t") == "seq" else None
+            if not isinstance(arg, int) or isinstance(arg, bool) or items is None or not 0 <= arg < len(items):
+                return None
+            node = items[arg]
+        else:
+            return None
+    return node if isinstance(node, dict) else None  # a leaf that is not a node
+
+
+def check_node_locations(nodes, values, size, spans, errors, where):
+    """Node spans name a profile's value tree and a node convention (DDR-0008)."""
+    conv = spans.get((nodes.get("convention"), nodes.get("convention_revision")))
+    if conv is None or conv.get("selects") != "value-node":
+        errors.append(
+            "%s: unknown node convention %s r%s" % (where, nodes.get("convention"), nodes.get("convention_revision"))
+        )
+        return
+    bound = [
+        v
+        for v in values
+        if (v.get("profile"), v.get("profile_revision")) == (nodes.get("profile"), nodes.get("profile_revision"))
+    ]
+    if len(bound) != 1 or "documents" not in bound[0]:
+        errors.append("%s: node locations need a value expectation with documents under the same profile" % where)
+        return
+    documents = bound[0]["documents"]
+    for s in nodes.get("spans", []):
+        d = s.get("document")
+        if not isinstance(d, int) or isinstance(d, bool) or not 0 <= d < len(documents):
+            errors.append("%s: node span document %r out of range" % (where, d))
+            continue
+        node = select_node(documents[d], s.get("path", []))
+        if node is None:
+            errors.append(
+                "%s: node path %s does not resolve in the value tree" % (where, canonical_json(s.get("path")))
+            )
+            continue
+        if node.get("t") not in conv["defined_nodes"]:
+            errors.append(
+                "%s: %s node spans are undefined in %s r%d" % (where, node.get("t"), conv["id"], conv["revision"])
+            )
+        if not 0 <= s.get("start", -1) <= s.get("end", -1) <= size:
+            errors.append("%s: node span [%r, %r) outside input" % (where, s.get("start"), s.get("end")))
 
 
 def check_profile_limits(rel, prof, errors):

@@ -1,0 +1,37 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/float_thresholds.py",
+  "profile": "yamlprims-core",
+  "profile_revision": 3,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.3, sections 4.1 and 8; expected bits are computed with exact rational arithmetic."
+  },
+  "id": "float-thresholds-spec13",
+  "parameters": {
+    "set": "thresholds"
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 500,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 154,
+    "input_bytes": 27673,
+    "digest": "sha256:011ba08e37b40573c23d5aeeef169a939c633281a1065dce4d3759ef92f66f6c"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Exact decimal texts at, just below, and just above binary64 and binary32 rounding midpoints, in both signs: ties to even, the binary64 overflow threshold, subnormal and normal boundaries, and f32 conversion of the binary64 value, including rows where that double rounding differs from rounding the text directly. Bound to the revision 1.3 profile; expectations are identical to the revision 1.1 recipe because no input in this set is affected by 1.2/E-1 to E-3 or 1.3/E-1 to E-4."
+  }
+}

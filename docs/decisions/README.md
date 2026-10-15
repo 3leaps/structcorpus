@@ -27,6 +27,7 @@ and its [normative catalog](https://github.com/3leaps/crucible/blob/fc6c49a3a1dd
 | [DDR-0005](DDR-0005-typed-conversion-expectations.md) | Typed-conversion expectations | Proposed |
 | [DDR-0006](DDR-0006-profile-revisions-for-spec-1-1.md) | Profile and span-convention revisions for yamlprims specification 1.1 | Proposed |
 | [DDR-0007](DDR-0007-limits-profiles-and-stress-recipes.md) | Explicit-limits profiles, recipe hazards and budgets, and listing | Proposed |
+| [DDR-0008](DDR-0008-node-spans-and-spec-1-3-profiles.md) | Node spans and profile revisions for yamlprims specification 1.3 | Proposed |
 | [SecDR-0001](SecDR-0001-public-only-admission.md) | Public-only admission and classification compliance | Proposed |
 | [SecDR-0002](SecDR-0002-bounded-execution-containment.md) | Bounded execution and memory containment for hostile cases | Proposed |
 | [PDR-0001](PDR-0001-staged-releases.md) | Staged releases, each with its own acceptance list | Proposed |

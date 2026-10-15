@@ -66,7 +66,8 @@
         "events": {"$ref": "#/definitions/events"},
         "value": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/valueExpectation"}},
         "typed": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/typedExpectation"}},
-        "locations": {"$ref": "#/definitions/locations"}
+        "locations": {"$ref": "#/definitions/locations"},
+        "node_locations": {"$ref": "#/definitions/nodeLocations"}
       }
     },
     "execution": {
@@ -193,6 +194,40 @@
         {"additionalProperties": false, "required": ["items"], "properties": {"t": {"const": "seq"}, "items": {"type": "array", "items": {"$ref": "#/definitions/value"}}}},
         {"additionalProperties": false, "required": ["entries"], "properties": {"t": {"const": "map"}, "entries": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/definitions/value"}}}}},
         {"additionalProperties": false, "required": ["tag", "inner"], "properties": {"t": {"const": "tagged"}, "tag": {"type": "string", "minLength": 1}, "inner": {"$ref": "#/definitions/value"}}}
+      ]
+    },
+    "nodeLocations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["convention", "convention_revision", "profile", "profile_revision", "spans"],
+      "properties": {
+        "convention": {"$ref": "#/definitions/slug"},
+        "convention_revision": {"type": "integer", "minimum": 1},
+        "profile": {"$ref": "#/definitions/slug"},
+        "profile_revision": {"type": "integer", "minimum": 1},
+        "spans": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["document", "path", "start", "end"],
+            "properties": {
+              "document": {"type": "integer", "minimum": 0},
+              "path": {"type": "array", "maxItems": 64, "items": {"$ref": "#/definitions/nodeStep"}},
+              "start": {"type": "integer", "minimum": 0},
+              "end": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "nodeStep": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["key"], "properties": {"key": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "additionalProperties": false, "required": ["value"], "properties": {"value": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "additionalProperties": false, "required": ["item"], "properties": {"item": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "additionalProperties": false, "required": ["inner"], "properties": {"inner": {"const": true}}}
       ]
     },
     "locations": {
