@@ -37,8 +37,22 @@
       "required": ["tier", "max_cases", "max_output_bytes"],
       "properties": {
         "tier": {"enum": ["smoke", "conformance", "stress"]},
+        "hazards": {"type": "array", "uniqueItems": true, "items": {"enum": ["alias-expansion", "deep-nesting", "large-input", "many-keys", "long-scalar", "late-failure"]}},
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "wall_ms": {"type": "integer", "minimum": 1},
+            "memory_bytes": {"type": "integer", "minimum": 1},
+            "output_bytes": {"type": "integer", "minimum": 1}
+          }
+        },
         "max_cases": {"type": "integer", "minimum": 1},
         "max_output_bytes": {"type": "integer", "minimum": 1}
+      },
+      "if": {"properties": {"hazards": {"minItems": 1}}, "required": ["hazards"]},
+      "then": {"required": ["budgets"]
       }
     },
     "expected": {

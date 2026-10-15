@@ -22,7 +22,8 @@ Release stages are defined in
 | Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |
 | Containment runner with self-tests (SecDR-0002): bounded execution of a caller-supplied command | Implemented |
 | Running hostile YAML cases through a parser driver | Planned, 0.2 (needs the hazardous recipes and a consumer driver) |
-| `list`, recipe ladders, stress tier | Planned, 0.2 |
+| `list`, stress-tier plumbing, recipe hazards and budgets, explicit-limits profile `yamlprims-core-limits` (DDR-0007) | Implemented |
+| Adversarial recipe ladders and limit-boundary cases | Planned, 0.2 |
 | yaml-test-suite import, Windows/Linux parity matrix | Planned, 0.3 |
 | Binding lifetime and streaming input surfaces | Unsupported until a consumer exposes them |
 | JSON, XML | Reserved |
