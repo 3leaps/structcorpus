@@ -1,0 +1,145 @@
+{
+ "category": "aliases",
+ "classifiers": {
+  "access-tier": "public",
+  "sensitivity": "0-public"
+ },
+ "dialect": "yaml-1.2.2",
+ "execution": {
+  "hazards": [],
+  "tier": "smoke"
+ },
+ "expectations": {
+  "events": {
+   "events": [
+    "+STR",
+    "+DOC",
+    "+MAP",
+    "=VAL :a",
+    "=VAL &x :1",
+    "=VAL :b",
+    "+SEQ []",
+    "=ALI *x",
+    "=ALI *x",
+    "=ALI *x",
+    "=ALI *x",
+    "=ALI *x",
+    "=ALI *x",
+    "=ALI *x",
+    "=ALI *x",
+    "=ALI *x",
+    "-SEQ",
+    "-MAP",
+    "-DOC",
+    "-STR"
+   ],
+   "notation": "yaml-test-suite",
+   "status": "valid"
+  },
+  "value": [
+   {
+    "documents": [
+     {
+      "entries": [
+       [
+        {
+         "t": "str",
+         "v": "a"
+        },
+        {
+         "t": "int",
+         "v": "1"
+        }
+       ],
+       [
+        {
+         "t": "str",
+         "v": "b"
+        },
+        {
+         "items": [
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          },
+          {
+           "t": "int",
+           "v": "1"
+          }
+         ],
+         "t": "seq"
+        }
+       ]
+      ],
+      "t": "map"
+     }
+    ],
+    "profile": "yamlprims-core",
+    "profile_revision": 2
+   },
+   {
+    "error": {
+     "phase": "limit",
+     "limit": "max_nodes",
+     "configured": 0
+    },
+    "profile": "yamlprims-core-limits",
+    "profile_revision": 1
+   }
+  ]
+ },
+ "format": "yaml",
+ "id": "yaml.aliases.alias-events-limit",
+ "input": {
+  "bytes": 48,
+  "path": "fixtures/yaml/alias-events-nine.yaml",
+  "sha256": "f4c3e8249a4b334eb7f9265e869df5b1e34358cbefafa7ee8d2d94da4f6702a9"
+ },
+ "provenance": {
+  "license": "MIT OR Apache-2.0",
+  "method": "Hand-authored for structcorpus from the YAML 1.2.2 specification and the published yamlprims specification revision 1.1.",
+  "origin": "synthetic"
+ },
+ "relations": {
+  "family": "alias-validity",
+  "spec_refs": [
+   "https://yaml.org/spec/1.2.2/",
+   "https://github.com/3leaps/yamlprims/blob/spec-v1.1/docs/spec/yamlprims-spec.md"
+  ]
+ },
+ "review": {
+  "author": "devlead",
+  "rationale": "Nine alias events: within the default limits, and one over max_alias_events = 8 under yamlprims-core-limits r1. Every other limit holds: 14 nodes (the root mapping, keys a and b, the scalar 1, the sequence, and nine copies) against max_nodes = 64, and 9 expanded nodes against max_expanded_nodes = 32 (yamlprims 1.1 section 6).",
+  "status": "provisional"
+ },
+ "revision": 1,
+ "schema_version": "case/v1"
+}

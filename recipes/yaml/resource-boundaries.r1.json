@@ -1,0 +1,42 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/resource_ladders.py",
+  "profile": "yamlprims-core-limits",
+  "profile_revision": 2,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from YAML 1.2.2 and the published yamlprims specification revision 1.3, sections 5.4 and 6."
+  },
+  "id": "resource-boundaries",
+  "parameters": {
+    "set": "boundaries",
+    "max_alias_events": 8,
+    "max_expanded_nodes": 32,
+    "max_mapping_entries": 16,
+    "max_nodes": 64,
+    "max_input_bytes": 65536
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 100,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 12,
+    "input_bytes": 1432,
+    "digest": "sha256:2d58ccd64e098022f1fcd50f7d36298e8d6d898a127fb3c3a948b19d547ff4a3"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "For max_alias_events, max_expanded_nodes, max_mapping_entries, and max_nodes: inputs whose measure is one below, equal to, and one above the profile's limit, with every other limit held. Only the input above fails, naming the limit and its configured value. Counts follow section 5.4 (an alias is checked before its copy) and section 6."
+  }
+}

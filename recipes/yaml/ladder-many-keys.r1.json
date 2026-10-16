@@ -1,0 +1,46 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/resource_ladders.py",
+  "profile": "yamlprims-core",
+  "profile_revision": 3,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from YAML 1.2.2 and the published yamlprims specification revision 1.3, sections 5.4 and 6."
+  },
+  "id": "ladder-many-keys",
+  "parameters": {
+    "set": "many-keys",
+    "sizes": "10,100,1000,10000,100000"
+  },
+  "execution": {
+    "tier": "stress",
+    "max_cases": 100,
+    "max_output_bytes": 268435456,
+    "hazards": [
+      "many-keys"
+    ],
+    "budgets": {
+      "wall_ms": 2000,
+      "memory_bytes": 536870912,
+      "output_bytes": 65536
+    }
+  },
+  "expected": {
+    "cases": 10,
+    "input_bytes": 10172980,
+    "digest": "sha256:8131f2840d34d4a716933e00dcfa077ff24764763abb09f53036efec98854e04"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Block mappings of 10 to 100,000 keys sharing a 32-byte prefix, each also with the first key repeated last, which is a duplicate key. Format events for both; the duplicate is decided by YAML and the profile."
+  }
+}

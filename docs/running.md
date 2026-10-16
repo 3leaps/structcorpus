@@ -43,6 +43,26 @@ case did not run.
 
 ## Parsers
 
-The corpus ships no parser. A consumer runs its own parser image and command
-through `tools/runner.py`. Driver integration arrives with the hazardous
-recipes.
+The corpus ships no parser. A consumer runs its own parser image, pinned by
+digest, and command through `tools/runner.py`:
+
+```sh
+python3 tools/corpus.py hydrate --tier stress --output /path/outside/checkout
+python3 tools/runner.py run --root /path/outside/checkout \
+  --image registry.example.invalid/parser@sha256:... \
+  --results results.jsonl -- parser-driver --profile yamlprims-core
+```
+
+`run` verifies the hydrated root first and runs nothing if verification fails.
+By default it runs only hazardous cases (`--all` runs every case). Each case runs
+in its own container with that case's budgets, and its input arrives on stdin.
+
+Each line of `results.jsonl` gives:
+- the case id and its outcome;
+- the exit code;
+- whether the memory limit was hit;
+- the elapsed time;
+- the length and sha256 of standard output.
+
+Raw output is never stored. Comparing the parser's output with a case's
+expectations is the driver's job; the runner only bounds the run.

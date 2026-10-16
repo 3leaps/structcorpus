@@ -126,8 +126,12 @@ class TestRecipeHazards(Scratch):
         self.assertEqual(ex, {"tier": "stress", "hazards": ["deep-nesting"], "budgets": BUDGETS})
 
     def test_recipes_without_hazards_keep_their_records(self):
-        # Existing recipes declare no hazards, so their generated records (and digests) are unchanged.
+        # Smoke and conformance recipes declare no hazards, so their generated records (and digests)
+        # are unchanged by the hazards field. Hazardous recipes are stress-tier ladders only.
         for rel, doc in corpus.load_recipes(REPO, []).items():
+            if doc["execution"]["tier"] == "stress":
+                self.assertTrue(doc["execution"].get("hazards"), rel)
+                continue
             self.assertNotIn("hazards", doc["execution"], rel)
             self.assertNotIn("budgets", doc["execution"], rel)
 
@@ -142,9 +146,24 @@ class TestRecipeHazards(Scratch):
         # that a stress hydration with no stress recipes completes and verifies.
         for big in ("core-truth-booleans.r2.json", "core-truth-collisions.r1.json"):
             os.remove(os.path.join(self.root, "recipes", "yaml", big))
+        for name in os.listdir(os.path.join(self.root, "recipes", "yaml")):
+            if name.startswith("ladder-"):
+                os.remove(os.path.join(self.root, "recipes", "yaml", name))
         out = os.path.join(self._tmp.name, "stress")
         corpus.hydrate(self.root, out, "stress")
         self.assertEqual(corpus.verify(self.root, out), [])
+
+    def test_shipped_stress_ladders_hydrate_and_verify(self):
+        ladders = {
+            corpus.load_json_strict(open(os.path.join(REPO, "recipes", "yaml", n), "rb").read())["id"]
+            for n in os.listdir(os.path.join(REPO, "recipes", "yaml"))
+            if n.startswith("ladder-")
+        }
+        self.assertEqual(len(ladders), 5)
+        out = os.path.join(self._tmp.name, "ladders")
+        summary = corpus.hydrate(REPO, out, "stress", ladders)
+        self.assertEqual({r["recipe"].split("/")[-1].split(".")[0] for r in summary["recipes"]}, ladders)
+        self.assertEqual(corpus.verify(REPO, out), [])
 
 
 class TestList(Scratch):

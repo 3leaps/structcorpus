@@ -14,6 +14,7 @@ blocked, never an unbounded run.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -418,6 +419,76 @@ def cmd_selftest(args):
     return 0 if ok else 1
 
 
+def _hydrated_cases(root):
+    """Verified case records and input paths from a hydrated root (DDR-0004). Raises ValueError if unverified."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import corpus
+
+    problems = corpus.verify(corpus.ROOT, root)
+    if problems:
+        raise ValueError("hydrated root failed verification: %s" % "; ".join(problems[:5]))
+    with open(os.path.join(root, "cases.jsonl"), "rb") as fh:
+        for line in fh.read().split(b"\n"):
+            if not line:
+                continue
+            rec = corpus.load_json_strict(line)
+            prefix, local = rec["id"].rsplit(".", 1)
+            yield rec, os.path.join(root, "inputs", rec["format"], prefix, local + ".yaml")
+
+
+def run_cases(root, image, argv, hazardous_only=True, runtime=None):
+    """Run each selected case through the caller's command; yield one result per case.
+
+    Each case runs with its own budgets. Results carry the outcome and a digest of stdout, never
+    the raw output, and nothing is compared with an expectation: that is the consumer's driver's job.
+    """
+    for rec, path in _hydrated_cases(root):
+        ex = rec["execution"]
+        if hazardous_only and not ex["hazards"]:
+            continue
+        row = {"id": rec["id"], "tier": ex["tier"], "hazards": ex["hazards"]}
+        if ex["hazards"] and not ex.get("budgets"):
+            row.update(outcome="skipped", reason="hazardous case without budgets")
+        else:
+            # run_contained checks containment before creating anything, so an unavailable
+            # runtime is reported per case as blocked and no container starts.
+            with open(path, "rb") as fh:
+                data = fh.read()
+            try:
+                r = run_contained(image, argv, data, ex.get("budgets"), runtime)
+            except Blocked as exc:
+                row.update(outcome="blocked", reason=str(exc))
+            else:
+                row.update(
+                    outcome=r["outcome"],
+                    exit_code=r["exit_code"],
+                    oom_killed=r["oom_killed"],
+                    elapsed_s=r["elapsed_s"],
+                    stdout_bytes=len(r["stdout"]),
+                    stdout_sha256=hashlib.sha256(r["stdout"]).hexdigest(),
+                    output_excess=r["output_excess"],
+                )
+        yield row
+
+
+def cmd_run(args):
+    argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
+    if not argv:
+        print("run: give the parser command after --", file=sys.stderr)
+        return 2
+    counts = {}
+    try:
+        with open(args.results, "x", encoding="utf-8") as out:
+            for row in run_cases(args.root, args.image, argv, not args.all, args.runtime):
+                out.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+                counts[row["outcome"]] = counts.get(row["outcome"], 0) + 1
+    except ValueError as exc:
+        print("run: %s" % exc, file=sys.stderr)
+        return 1
+    print("run: %s" % ", ".join("%s=%d" % kv for kv in sorted(counts.items())) if counts else "run: no cases selected")
+    return 1 if counts.get("blocked") else 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="runner.py", description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="command")
@@ -427,6 +498,14 @@ def main(argv=None):
     )
     st.add_argument("--require-containment", action="store_true", help="fail instead of reporting blocked")
     st.set_defaults(func=cmd_selftest)
+    rn = sub.add_parser("run", help="run a hydrated tier's cases through a parser command, one container per case")
+    rn.add_argument("--root", required=True, help="hydrated output root (verified before anything runs)")
+    rn.add_argument("--image", required=True, help="the parser's container image, pinned by digest")
+    rn.add_argument("--results", required=True, help="new JSONL file for per-case outcomes")
+    rn.add_argument("--all", action="store_true", help="run every case, not only hazardous ones")
+    rn.add_argument("--runtime", default=None)
+    rn.add_argument("argv", nargs=argparse.REMAINDER, help="-- then the parser command; input arrives on stdin")
+    rn.set_defaults(func=cmd_run)
     cl = sub.add_parser("cleanup", help="remove leftover runner containers (only those the runner labelled)")
     cl.add_argument("--runtime", default=None)
     cl.set_defaults(func=cmd_cleanup)

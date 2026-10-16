@@ -374,6 +374,8 @@ def check_case(root, rec, profiles, spans, errors, where):
         err = v.get("error")
         if err is not None and err.get("phase") not in ERROR_PHASES:
             errors.append("%s: unknown error phase %r" % (where, err.get("phase")))
+        if err is not None:
+            check_limit_error(err, profiles.get(key), errors, where)
     for t in exp.get("typed", []):
         if (t.get("profile"), t.get("profile_revision")) not in profiles:
             errors.append("%s: unknown profile %s r%s" % (where, t.get("profile"), t.get("profile_revision")))
@@ -419,6 +421,27 @@ def check_case(root, rec, profiles, spans, errors, where):
         not review.get("reviewer") or review.get("reviewer") == review.get("author")
     ):
         errors.append("%s: a reviewed case needs a reviewer distinct from its author" % where)
+
+
+def check_limit_error(err, profile, errors, where):
+    """A limit error names a Limits field; a configured value must equal the profile's (DDR-0009)."""
+    if err.get("phase") != "limit":
+        if "configured" in err:
+            errors.append("%s: configured is only for limit errors" % where)
+        return
+    if err.get("limit") not in LIMIT_FIELDS:
+        errors.append("%s: limit %r is not a Limits field" % (where, err.get("limit")))
+        return
+    if "configured" not in err:
+        return
+    limits = (profile or {}).get("limits")
+    if limits is None:
+        errors.append("%s: configured needs a profile with explicit limits" % where)
+    elif err["configured"] != limits.get(err["limit"]):
+        errors.append(
+            "%s: configured %r does not match the profile's %s = %r"
+            % (where, err["configured"], err["limit"], limits.get(err["limit"]))
+        )
 
 
 def select_node(root, path):
@@ -638,11 +661,16 @@ def _inside(path, root):
 def _recipe_cases(root, rel, doc):
     """Yield concrete case records for one recipe, enforcing its declared caps."""
     gen = _load_generator(root, doc["generator"])
+    profile = _load_registry(root, "profiles", "profile", []).get((doc["profile"], doc["profile_revision"]))
     cap_cases = doc["execution"]["max_cases"]
     cap_bytes = doc["execution"]["max_output_bytes"]
     total = 0
     seen = set()
-    for count, (local_id, category, text, expectation, typed) in enumerate(gen.generate(doc["parameters"]), 1):
+    for count, row in enumerate(gen.generate(doc["parameters"]), 1):
+        # (local_id, category, text, value, typed[, events]). value None means no value layer;
+        # events, when given, is a format-level expectation (DDR-0002) bound to no profile.
+        local_id, category, text, expectation, typed = row[:5]
+        events = row[5] if len(row) > 5 else None
         if count > cap_cases:
             raise HydrateError("%s: generator exceeded max_cases %d" % (rel, cap_cases))
         if not isinstance(local_id, str) or not COMPONENT_RE.match(local_id) or local_id in seen:
@@ -651,7 +679,18 @@ def _recipe_cases(root, rel, doc):
         data = text.encode("utf-8") if isinstance(text, str) else bytes(text)
         cid = "%s.%s" % (doc["id"], local_id)
         bind = {"profile": doc["profile"], "profile_revision": doc["profile_revision"]}
-        expectations = {"value": [dict(expectation, **bind)]}
+        expectations = {}
+        if events is not None:
+            expectations["events"] = dict(events, notation="yaml-test-suite")
+        if expectation is not None:
+            expectations["value"] = [dict(expectation, **bind)]
+        if not expectations:
+            raise HydrateError("%s: generator produced %s with no expectation" % (rel, local_id))
+        if expectation is not None and "error" in expectation:
+            problems = []
+            check_limit_error(expectation["error"], profile, problems, "%s.%s" % (doc["id"], local_id))
+            if problems:
+                raise HydrateError("%s: %s" % (rel, "; ".join(problems)))
         if typed:
             expectations["typed"] = [dict(entry, **bind) for entry in typed]
         record = {

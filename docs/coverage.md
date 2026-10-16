@@ -22,12 +22,13 @@ Release stages are defined in
 | Wire-format goldens for a specific implementation's encoder | Not planned: an implementation's encoded output is its own conformance surface, not engine-neutral corpus material |
 | Non-hazardous adversarial recipes: exact binary64/binary32 rounding thresholds, double-quoted escapes, inline versus aliased merge pairs, tag-heavy trees and tag-wrapper limit boundaries (312 generated cases, provisional) | Implemented |
 | Committed adversarial cases: alias validity, block-scalar chomping and indentation with LF and CRLF, location precision (BOM, multibyte, tab, lone CR, U+2028), diagnostics inputs, the UTF-8 input gate (NUL, invalid UTF-8, UTF-16, UTF-32), and explicit and composite keys (58 cases, provisional) | Implemented |
-| Hazardous adversarial recipes (alias fan-out, many keys, late failure, depth) | Planned, 0.2 |
+| Limit boundaries for alias events, expanded nodes, mapping entries, and nodes under `yamlprims-core-limits` r2, with configured values (DDR-0009) | Implemented, provisional |
+| Stress ladders: alias fan-out, nested fan-out, many keys, late failure, depth (stress tier, hazardous, budgeted) | Implemented, provisional |
+| Depth limit boundaries | Planned: the specification does not yet define how load depth is counted |
 | Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |
 | Containment runner with self-tests (SecDR-0002): bounded execution of a caller-supplied command | Implemented |
-| Running hostile YAML cases through a parser driver | Planned, 0.2 (needs the hazardous recipes and a consumer driver) |
+| Running hostile YAML cases through a parser command (`runner.py run`), one container per case with its budgets | Implemented; comparing output with expectations is the consumer driver's job |
 | `list`, stress-tier plumbing, recipe hazards and budgets, explicit-limits profile `yamlprims-core-limits` (DDR-0007) | Implemented |
-| Adversarial recipe ladders and limit-boundary cases | Planned, 0.2 |
 | yaml-test-suite import, Windows/Linux parity matrix | Planned, 0.3 |
 | Binding lifetime and streaming input surfaces | Unsupported until a consumer exposes them |
 | JSON, XML | Reserved |

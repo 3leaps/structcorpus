@@ -176,11 +176,12 @@
       "properties": {
         "phase": {"enum": ["input", "syntax", "resolution", "structure", "limit", "typed"]},
         "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-        "limit": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+        "limit": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "configured": {"type": "integer", "minimum": 1}
       },
       "if": {"properties": {"phase": {"const": "limit"}}},
       "then": {"required": ["limit"]},
-      "else": {"not": {"required": ["limit"]}}
+      "else": {"not": {"anyOf": [{"required": ["limit"]}, {"required": ["configured"]}]}}
     },
     "value": {
       "type": "object",
