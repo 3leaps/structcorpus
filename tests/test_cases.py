@@ -340,9 +340,12 @@ class TestEventNotations(CaseRepo):
         errs = self.bell_case("structcorpus-events/1", '=VAL "a\\x0bb')
         self.assertTrue(any("two uppercase hex digits" in e for e in errs), errs)
 
-    def test_yts_does_not_read_sce1_escapes(self):
-        errs = self.bell_case("yaml-test-suite", '=VAL "a\\x07b')
-        self.assertTrue(any("unknown escape" in e for e in errs), errs)
+    def test_legacy_validation_does_not_impose_converter_domain(self):
+        # A percent-decoded tag can contain '>'; the legacy text cannot be converted
+        # unambiguously, but adding a codec does not invalidate preserved imports.
+        self.assertEqual(self.bell_case("yaml-test-suite", '=VAL <!a>b> "x'), [])
+        errs = self.bell_case("structcorpus-events/1", '=VAL <!a>b> "x')
+        self.assertTrue(any("style marker" in e for e in errs), errs)
 
     def test_unknown_notation(self):
         errs = self.bell_case("yaml-test-suite/2", '=VAL "a\\0b')

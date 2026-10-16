@@ -181,13 +181,13 @@ class TestEventVectors(unittest.TestCase):
 
 class TestDomains(unittest.TestCase):
     def test_tag_with_delimiter_cannot_be_written(self):
-        for tag in ("!a>b", "!a b", "!a\tb", ""):
+        for tag in ("!a>b", "!a\tb", "!a\x7fb", "!a\x80b", ""):
             with self.subTest(tag=repr(tag)):
                 with self.assertRaises(events.NotationError):
                     events.render(val("v", tag=tag), YTS)
 
     def test_names_outside_sce1_domain(self):
-        # YAML allows C1 controls in anchor names; structcorpus-events/1 cannot write them.
+        # YAML allows NEL in anchor names; structcorpus-events/1 cannot write it raw.
         self.assertEqual(events.render({"kind": "=ALI", "alias": "a\x85"}, YTS), "=ALI *a\x85")
         with self.assertRaises(events.NotationError):
             events.render({"kind": "=ALI", "alias": "a\x85"}, SCE1)
@@ -207,8 +207,52 @@ class TestDomains(unittest.TestCase):
                     events.parse(text, YTS)
 
     def test_unknown_notation(self):
-        with self.assertRaises(events.NotationError):
-            events.parse("+STR", "yaml-test-suite/2")
+        for operation, value in (
+            (events.parse, "+STR"),
+            (events.render, {"kind": "+STR"}),
+            (events.encode_value, "x"),
+            (events.decode_value, "x"),
+        ):
+            with self.subTest(operation=operation.__name__):
+                with self.assertRaises(events.NotationError):
+                    operation(value, "yaml-test-suite/2")
+
+    def test_raw_backslashes_are_not_value_escapes_in_either_notation(self):
+        for text in (r"=VAL &a\n <!t\x41> :v", r"=ALI *a\n"):
+            for notation in events.NOTATIONS:
+                self.assertEqual(events.render(events.parse(text, notation), notation), text)
+            self.assertEqual(events.convert(text, YTS, SCE1), text)
+
+    def test_invalid_unicode_fields_are_rejected(self):
+        for notation in events.NOTATIONS:
+            for ch in ("\ud800", "\udfff"):
+                for text in ("=ALI *a" + ch, "=VAL &a" + ch + " :v", "=VAL <!a" + ch + "> :v"):
+                    with self.subTest(text=repr(text), notation=notation):
+                        with self.assertRaises(events.NotationError):
+                            events.parse(text, notation)
+            for ch in ("\x7f", "\x80", "\x84", "\x86", "\x9f", "\ufeff", "\ufffe", "\uffff"):
+                with self.assertRaises(events.NotationError):
+                    events.render({"kind": "=ALI", "alias": "a" + ch}, notation)
+
+    def test_render_rejects_wrong_kind_fields_and_types(self):
+        for fields in (
+            {"kind": "+XYZ"},
+            {"kind": "+STR", "flow": True},
+            {"kind": "=VAL", "style": ":"},
+            val("v", style="?"),
+            val("v", extra="discarded"),
+            {"kind": "+SEQ", "flow": "false"},
+            {"kind": "=ALI", "alias": 1},
+            {"kind": "-DOC", "explicit": 1},
+        ):
+            with self.subTest(fields=fields):
+                with self.assertRaises(events.NotationError):
+                    events.render(fields, SCE1)
+
+    def test_error_does_not_echo_raw_control(self):
+        with self.assertRaises(events.NotationError) as ctx:
+            events.decode_value("\\\x1b", SCE1)
+        self.assertNotIn("\x1b", str(ctx.exception))
 
 
 class TestPinnedRunnerOutput(unittest.TestCase):
@@ -269,10 +313,11 @@ class TestPinnedRunnerOutput(unittest.TestCase):
         self.assertEqual(events.parse("=VAL &x1 <!t> :a>b", YTS), val("a>b", anchor="x1", tag="!t"))
         self.assertEqual(events.parse("=ALI *x1", YTS), {"kind": "=ALI", "alias": "x1"})
 
-    def test_decoded_tag_with_space_is_outside_the_domain(self):
+    def test_decoded_tag_with_space_is_delimited_by_angle_brackets(self):
         # Input: !<!a%20b> x. The runner prints the resolved tag, which here contains a space.
-        with self.assertRaises(events.NotationError):
-            events.parse("=VAL <!a b> :x", YTS)
+        for notation in events.NOTATIONS:
+            self.assertEqual(events.parse("=VAL <!a b> :x", notation), val("x", tag="!a b"))
+            self.assertEqual(events.render(val("x", tag="!a b"), notation), "=VAL <!a b> :x")
 
 
 class TestSelectionAndDisplay(unittest.TestCase):
@@ -282,11 +327,21 @@ class TestSelectionAndDisplay(unittest.TestCase):
         self.assertTrue(events.needs_sce1([{"kind": "+STR"}, val("\u2029")]))
         self.assertFalse(events.needs_sce1([{"kind": "=ALI", "alias": "a"}]))
 
+    def test_selection_checks_all_fields_and_rejects_no_domain(self):
+        # A value needing the new codec does not make a raw NEL anchor representable.
+        self.assertFalse(events.needs_sce1([val("\x07", anchor="a\x85")]))
+        self.assertTrue(events.needs_sce1([val("\x07", anchor=r"a\n")]))
+        with self.assertRaises(events.NotationError):
+            events.needs_sce1([val("\x07", tag="!a>b")])
+
     def test_display_never_prints_raw_controls_or_invisible_text(self):
         text = '=VAL "\x1b[2J\x85\u2028\u202e\u200b\ufeff ok'
         shown = events.display(text)
         self.assertTrue(all(0x20 <= ord(c) < 0x7F for c in shown), repr(shown))
         self.assertEqual(shown, '=VAL "\\u{001B}[2J\\u{0085}\\u{2028}\\u{202E}\\u{200B}\\u{FEFF} ok')
+
+    def test_display_escapes_direction_marks_and_surrogates(self):
+        self.assertEqual(events.display("\u061c\u200e\u200f\u2060\ud800"), r"\u{061C}\u{200E}\u{200F}\u{2060}\u{D800}")
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ value is displayed in event text, not about representing invalid input.
    from it, never stored alongside it.
 
 2. **Shared event grammar.** Both notations use the same event grammar. One
-   event is one line of the form `<kind>[ <field>]*`, with fields in this
+   event is one string of the form `<kind>[ <field>]*`, with fields in this
    order:
 
    | Kind | Fields, in order |
@@ -54,33 +54,45 @@ value is displayed in event text, not about representing invalid input.
    | `+STR`, `-STR`, `-MAP`, `-SEQ` | none |
    | `+DOC` | optional ` ---` (explicit start) |
    | `-DOC` | optional ` ...` (explicit end) |
-   | `+MAP`, `+SEQ` | optional ` {}` or ` []` (flow style), optional ` &<anchor>`, optional ` <<tag>>` |
-   | `=VAL` | optional ` &<anchor>`, optional ` <<tag>>`, then ` ` and a one-character style marker (`:` plain, `'` single-quoted, `"` double-quoted, `\|` literal, `>` folded), then the value |
+   | `+MAP`, `+SEQ` | optional ` {}` for a mapping or ` []` for a sequence (flow style), optional ` &<anchor>`, optional ` <` + tag text + `>` |
+   | `=VAL` | optional ` &<anchor>`, optional ` <` + tag text + `>`, then ` ` and a one-character style marker (`:` plain, `'` single-quoted, `"` double-quoted, `\|` literal, `>` folded), then the value |
    | `=ALI` | ` *<alias>` |
 
    An event is parsed into these fields before any escape is decoded. The
    value runs from just after the style marker to the end of the event, so it
-   can contain any character, spaces included.
+   can contain any character in the value's domain, spaces included. A legacy
+   string can contain Unicode line separators; splitting it with Unicode-aware
+   line splitting is not part of this grammar. The reference renderer rejects
+   unknown kinds, extra or missing fields, incorrect field types and unknown
+   styles rather than dropping fields or emitting malformed events. This is
+   individual-event syntax validation, not validation of stream nesting or
+   anchor lifecycle.
 
 3. **Field domains.**
    - **Anchor and alias names:** YAML 1.2.2 `ns-anchor-char` sequences, which
-     exclude whitespace, flow indicators, and C0 controls. They are written
-     raw in both notations. A name containing a C1 control, DEL, U+2028, or
-     U+2029, which YAML permits, cannot be written in `structcorpus-events/1`;
-     such an input uses the yaml-test-suite notation.
+      exclude YAML whitespace, flow indicators, C0 controls, DEL, C1 controls
+      other than NEL, surrogates, BOM, U+FFFE and U+FFFF. They are written
+      raw in both notations, including literal backslashes. A name containing
+      NEL, U+2028 or U+2029, which YAML 1.2.2 permits, cannot be written in
+      `structcorpus-events/1`; such an input uses the yaml-test-suite notation.
    - **Tags:** the resolved tag as text between `<` and `>`, raw in both
      notations. Resolution decodes percent escapes, so a resolved tag can
      contain characters its source spelling did not: `!<!a%20b>` resolves to
      `!a b`, which the pinned runner prints as `<!a b>`. A resolved tag
-     containing `>`, whitespace, or a control character cannot be written
-     unambiguously and is outside the domain of both notations. The codec adds
-     and removes no percent-encoding.
+      containing `>` is outside the converter's unambiguous domain. C0/C1
+      controls, DEL, U+2028/U+2029 and surrogates are also excluded from its tag
+      domain in both notations. Ordinary spaces are unambiguous inside the angle
+      brackets and are allowed, as are literal backslashes. The codec adds and
+      removes no percent-encoding. These are codec domain restrictions, not a
+      claim that the legacy runner never emits other resolved tags.
    - **Values:** any sequence of Unicode scalar values, encoded per the
      notation (item 4).
 
    An event that is outside these domains cannot be encoded in the
    notation. The codec rejects it with an error; it never produces an
-   ambiguous string.
+   ambiguous string. A preserved legacy record outside the codec's domain can
+   still be valid legacy metadata; conversion of it is unsupported. No codec
+   can recover information already lost or ambiguously framed by a producer.
 
 4. **Value escaping in `structcorpus-events/1`.** Every value has exactly one
    spelling:
@@ -132,16 +144,21 @@ value is displayed in event text, not about representing invalid input.
    - a field outside its domain.
 
    For the yaml-test-suite notation, the existing check stays (no raw NUL, BS,
-   TAB, LF, or CR).
+   TAB, LF, or CR). Repository validation does not impose the reference codec's
+   narrower field grammar on historical legacy records or imports. Explicit
+   conversion still parses and validates its source within the declared domain.
 
 9. **Consumer contract.** A consumer driver declares which notations it
    reads. An events expectation in a notation it does not read is reported as
    `unsupported`, a result distinct from pass, mismatch, and skipped. It never
-   counts toward qualification coverage. Drivers compare events as parsed
-   fields, not strings, and print mismatches through an escaped display that
+   counts toward qualification coverage. Drivers compare supported events as
+   parsed fields; an event outside their supported conversion domain is likewise
+   reported as unsupported, not as a YAML syntax failure. Drivers print mismatches through an escaped display that
    never writes raw controls to a terminal, in either notation. A consumer pins
    the corpus commit, which pins this notation's definition along with the
-   profiles.
+   profiles, and records its reader/schema revision and notation capabilities
+   with qualification results. Unsupported expectations remain visible in the
+   requested inventory; a run cannot claim complete coverage while any remain.
 
 10. **Schema version.** Adding an enum value to `events.notation` does not
     change `case/v1`. A reader that does not know `structcorpus-events/1`
@@ -155,8 +172,10 @@ value is displayed in event text, not about representing invalid input.
 - The notation is control-escaped, not display-safe: bidirectional formatting,
   zero-width characters, and other invisible text still appear as themselves.
   Diagnostics must escape output for both notations.
-- Inputs whose anchors or tags fall outside the domain stay in the
-  yaml-test-suite notation.
+- Inputs whose fields fit the legacy codec domain but not the new domain stay
+  in the yaml-test-suite notation. If neither domain can encode a new event,
+  automatic selection fails; it does not invent a fallback representation.
+  Preserved legacy imports remain an explicit exception as described above.
 - Until a consumer driver supports the notation, records using it are reported
   as unsupported, not as passing coverage. No committed case uses it yet.
 - The codec is tested against exact vectors written by hand, not only round

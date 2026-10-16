@@ -398,14 +398,14 @@ def check_case(root, rec, profiles, spans, errors, where):
             if not isinstance(event_list, list) or not all(
                 isinstance(e, str) and EVENT_RE.match(e) for e in event_list
             ):
-                errors.append("%s: valid events need an event list in yaml-test-suite notation" % where)
+                errors.append("%s: valid events need an event list in the declared notation" % where)
                 event_list = None
             elif notation == event_notation.YTS and any(EVENT_ESCAPED_RAW_RE.search(e) for e in event_list):
                 errors.append(
                     "%s: event text contains a raw NUL, BS, TAB, LF, or CR; the notation escapes these" % where
                 )
-            elif notation in event_notation.NOTATIONS:
-                # Parse each event into fields under its notation (DDR-0010).
+            elif notation == event_notation.SCE1:
+                # New-notation grammar is strict; historical legacy validation is unchanged.
                 for i, e in enumerate(event_list):
                     try:
                         event_notation.parse(e, notation)

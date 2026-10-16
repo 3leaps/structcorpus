@@ -38,6 +38,8 @@ def _needs_escape(ch):
 
 
 def encode_value(text, notation):
+    if notation not in NOTATIONS:
+        raise NotationError("unknown notation %r" % notation)
     out = []
     for ch in text:
         if 0xD800 <= ord(ch) <= 0xDFFF:
@@ -54,6 +56,8 @@ def encode_value(text, notation):
 
 
 def decode_value(text, notation):
+    if notation not in NOTATIONS:
+        raise NotationError("unknown notation %r" % notation)
     out = []
     i = 0
     while i < len(text):
@@ -89,27 +93,29 @@ def decode_value(text, notation):
             out.append(hit[0])
             i += 6
         else:
-            raise NotationError("unknown escape \\%s" % e)
+            raise NotationError("unknown escape %r" % ("\\" + e))
     return "".join(out)
 
 
-# YAML 1.2.2 ns-anchor-char: any non-whitespace printable character except flow indicators.
-# YAML whitespace is space and tab only, so NEL and the C1 range are allowed here.
-ANCHOR_RE = re.compile(r"[^ \t\r\n\[\]{},\x00-\x1f]+\Z")
+# YAML 1.2.2 ns-anchor-char: ns-char minus the flow indicators. Of the C1 range,
+# only NEL is c-printable; DEL, the other C1 controls, surrogates and BOM are not names.
+ANCHOR_RE = re.compile(r"[^ \t\r\n\[\]{},\x00-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufeff\ufffe\uffff]+\Z")
+
+
+def _raw_control(ch):
+    return ord(ch) <= 0x1F or 0x7F <= ord(ch) <= 0x9F or ch in SEPARATORS
 
 
 def _check_name(name, notation, what):
     if not name or not ANCHOR_RE.match(name):
         raise NotationError("%s %r is not a YAML anchor name" % (what, name))
-    if notation == SCE1 and any(_needs_escape(c) for c in name):
+    if notation == SCE1 and any(_raw_control(c) for c in name):
         raise NotationError("%s %r is outside the structcorpus-events/1 domain" % (what, name))
 
 
 def _check_tag(tag, notation):
-    if not tag or ">" in tag or any(c.isspace() for c in tag) or any(ord(c) <= 0x1F for c in tag):
+    if not tag or ">" in tag or any(_raw_control(c) or 0xD800 <= ord(c) <= 0xDFFF for c in tag):
         raise NotationError("tag %r cannot be written between < and >" % tag)
-    if notation == SCE1 and any(_needs_escape(c) for c in tag):
-        raise NotationError("tag %r is outside the structcorpus-events/1 domain" % tag)
 
 
 def parse(event, notation):
@@ -168,7 +174,30 @@ def render(fields, notation):
     """Write fields as one event string in notation; fails if a field is outside its domain."""
     if notation not in NOTATIONS:
         raise NotationError("unknown notation %r" % notation)
-    kind = fields["kind"]
+    kind = fields.get("kind")
+    allowed = {"kind"}
+    required = {"kind"}
+    if kind not in KINDS:
+        raise NotationError("unknown event kind %r" % kind)
+    if kind in ("+DOC", "-DOC"):
+        allowed.add("explicit")
+    if kind in ("+MAP", "+SEQ", "=VAL"):
+        allowed.update(("anchor", "tag"))
+    if kind in ("+MAP", "+SEQ"):
+        allowed.add("flow")
+    if kind == "=ALI":
+        allowed.add("alias")
+        required.add("alias")
+    if kind == "=VAL":
+        allowed.update(("style", "value"))
+        required.update(("style", "value"))
+    if set(fields) - allowed or required - set(fields):
+        raise NotationError("invalid fields for %s" % kind)
+    for name in allowed - {"kind"}:
+        if name in fields and not isinstance(fields[name], bool if name in ("explicit", "flow") else str):
+            raise NotationError("invalid type for %s" % name)
+    if kind == "=VAL" and fields["style"] not in STYLES:
+        raise NotationError("invalid scalar style %r" % fields["style"])
     out = [kind]
     if kind in ("+DOC", "-DOC") and fields.get("explicit"):
         out.append(" ---" if kind == "+DOC" else " ...")
@@ -194,7 +223,17 @@ def convert(event, source, target):
 
 def needs_sce1(fields_list):
     """Whether a new record should use structcorpus-events/1 (DDR-0010 item 7)."""
-    return any(any(_hex_escaped(c) or c in SEPARATORS for c in f.get("value", "")) for f in fields_list)
+    fields_list = list(fields_list)
+    for fields in fields_list:
+        render(fields, YTS)  # An event outside both domains has no automatic fallback.
+    needed = any(any(_hex_escaped(c) or c in SEPARATORS for c in f.get("value", "")) for f in fields_list)
+    if needed:
+        try:
+            for fields in fields_list:
+                render(fields, SCE1)
+        except NotationError:
+            return False
+    return needed
 
 
 def display(event):
@@ -206,7 +245,9 @@ def display(event):
             o <= 0x1F
             or 0x7F <= o <= 0x9F
             or ch in SEPARATORS
-            or ch in "\u200b\u200c\u200d\u2066\u2067\u2068\u2069\u202a\u202b\u202c\u202d\u202e\ufeff"
+            or 0xD800 <= o <= 0xDFFF
+            or ch
+            in "\u061c\u200b\u200c\u200d\u200e\u200f\u2060\u2066\u2067\u2068\u2069\u202a\u202b\u202c\u202d\u202e\ufeff"
         ):
             out.append("\\u{%04X}" % o)
         else:
