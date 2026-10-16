@@ -461,6 +461,11 @@ def run_cases(root, image, argv, hazardous_only=True, runtime=None):
             else:
                 row.update(
                     outcome=r["outcome"],
+                    # What was enforced, not measured: the effective limits and the mechanism.
+                    # Peak memory is not measured; an OOM kill is observed, not a measurement.
+                    limits=r["limits"],
+                    mechanism=r["mechanism"],
+                    peak_memory=r["peak_memory"],
                     exit_code=r["exit_code"],
                     oom_killed=r["oom_killed"],
                     elapsed_s=r["elapsed_s"],

@@ -430,3 +430,11 @@ class TestGeneratedLimitErrors(RecipeRepo):
         with self.assertRaises(corpus.HydrateError) as ctx:
             list(corpus._recipe_cases(self.root, "recipes/yaml/tiny.r1.json", self.recipe))
         self.assertIn("no expectation", str(ctx.exception))
+
+    def test_limit_parameter_must_match_profile(self):
+        self.recipe.update(
+            profile="yamlprims-core-limits", profile_revision=2, parameters={"n": 1, "limit_max_nodes": 65}
+        )
+        with self.assertRaises(corpus.HydrateError) as ctx:
+            list(corpus._recipe_cases(self.root, "recipes/yaml/tiny.r1.json", self.recipe))
+        self.assertIn("limit_max_nodes=65 does not match the profile's max_nodes", str(ctx.exception))

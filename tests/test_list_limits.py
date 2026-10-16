@@ -154,11 +154,11 @@ class TestRecipeHazards(Scratch):
         self.assertEqual(corpus.verify(self.root, out), [])
 
     def test_shipped_stress_ladders_hydrate_and_verify(self):
-        ladders = {
-            corpus.load_json_strict(open(os.path.join(REPO, "recipes", "yaml", n), "rb").read())["id"]
-            for n in os.listdir(os.path.join(REPO, "recipes", "yaml"))
-            if n.startswith("ladder-")
-        }
+        ladders = set()
+        for n in os.listdir(os.path.join(REPO, "recipes", "yaml")):
+            if n.startswith("ladder-"):
+                with open(os.path.join(REPO, "recipes", "yaml", n), "rb") as fh:
+                    ladders.add(corpus.load_json_strict(fh.read())["id"])
         self.assertEqual(len(ladders), 5)
         out = os.path.join(self._tmp.name, "ladders")
         summary = corpus.hydrate(REPO, out, "stress", ladders)

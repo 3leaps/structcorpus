@@ -662,6 +662,13 @@ def _recipe_cases(root, rel, doc):
     """Yield concrete case records for one recipe, enforcing its declared caps."""
     gen = _load_generator(root, doc["generator"])
     profile = _load_registry(root, "profiles", "profile", []).get((doc["profile"], doc["profile_revision"]))
+    for name, value in sorted(doc["parameters"].items()):
+        # A generator may receive a profile limit as limit_<field>; it must be the profile's value.
+        if name.startswith("limit_"):
+            field = name[len("limit_") :]
+            limits = (profile or {}).get("limits") or {}
+            if field not in LIMIT_FIELDS or limits.get(field) != value:
+                raise HydrateError("%s: parameter %s=%r does not match the profile's %s" % (rel, name, value, field))
     cap_cases = doc["execution"]["max_cases"]
     cap_bytes = doc["execution"]["max_output_bytes"]
     total = 0

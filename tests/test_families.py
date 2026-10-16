@@ -304,6 +304,77 @@ class TestStressLadders(unittest.TestCase):
             self.assertEqual(row[3], {"error": want}, row[0])
             self.assertEqual(row[5]["status"], "invalid" if row[0].endswith("-syntax") else "valid")
 
+    def test_stress_errors_are_first_under_their_profile(self):
+        # Every stress row that expects an error is bound to a profile with explicit limits, and,
+        # recounted here from the input text, no competing limit is reached before the defect.
+        checked = 0
+        for name in os.listdir(os.path.join(REPO, "recipes", "yaml")):
+            if not name.startswith("ladder-"):
+                continue
+            doc = recipe(name)
+            prof = "%s.r%d.json" % (doc["profile"], doc["profile_revision"])
+            with open(os.path.join(REPO, "manifests", "profiles", prof)) as fh:
+                limits = json.load(fh).get("limits")
+            for row in rl.generate(doc["parameters"]):
+                if row[3] is None:
+                    continue
+                self.assertIsNotNone(limits, (name, row[0]))
+                text = row[2]
+                self.assertLessEqual(len(text.encode()), limits["max_input_bytes"], row[0])
+                checked += 1
+                if row[3]["error"]["phase"] == "syntax":
+                    continue  # outranked only by the input gate (section 7.1)
+                pairs = [tuple(line.split(": ", 1)) for line in text.splitlines()]
+                nodes = 1 + 2 * len(pairs)
+                owned = 64 * nodes + 24 * len(pairs)
+                owned += sum(len(k) + (0 if v.isdigit() else len(v)) for k, v in pairs)
+                self.assertLessEqual(nodes, limits["max_nodes"], row[0])
+                self.assertLessEqual(len(pairs), limits["max_mapping_entries"], row[0])
+                self.assertLessEqual(owned, limits["max_owned_bytes"], row[0])
+        self.assertEqual(checked, 11)
+
+    def test_proposed_defaults_would_fail_the_largest_rows(self):
+        # Under the specification's proposed default of 100,000 mapping entries these prefixes
+        # are rejected before their defect; hence the explicit-limits profile.
+        late = {r[0]: r for r in rows(rl, "ladder-late-failure.r1.json")}
+        keys = {r[0]: r for r in rows(rl, "ladder-many-keys.r1.json")}
+        self.assertGreater(late["late-0262144-dup"][2].count("\n"), 100000)
+        self.assertGreater(keys["keys-100000-dup-last"][2].count("\n"), 100000)
+
+    def test_generator_rejects_a_limit_that_would_fire_first(self):
+        params = dict(recipe("ladder-late-failure.r1.json")["parameters"], limit_max_mapping_entries=100000)
+        with self.assertRaises(ValueError) as ctx:
+            list(rl.generate(params))
+        self.assertIn("max_mapping_entries 262145 exceeds the profile's 100000", str(ctx.exception))
+
+    def test_many_keys_rejects_a_limit_that_would_fire_first(self):
+        params = dict(recipe("ladder-many-keys.r1.json")["parameters"], limit_max_mapping_entries=100000)
+        with self.assertRaises(ValueError) as ctx:
+            list(rl.generate(params))
+        self.assertIn("keys-100000-dup-last: max_mapping_entries 100001 exceeds", str(ctx.exception))
+
+    def test_syntax_row_rejects_an_input_gate_that_would_fire_first(self):
+        params = dict(recipe("ladder-late-failure.r1.json")["parameters"], limit_max_input_bytes=14255 - 1)
+        with self.assertRaises(ValueError) as ctx:
+            list(rl.generate(params))
+        self.assertIn("late-0001024-syntax: max_input_bytes 14255 exceeds", str(ctx.exception))
+
+    def test_flat_mapping_measures_by_hand(self):
+        # {a: 1, bb: x}: the mapping, two keys, and two values are 5 nodes; two entries.
+        # Owned bytes: 5 * 64 + 2 * 24 + key bytes 1 + 2 + the String value 1 (the Int adds none).
+        m = rl.flat_mapping_measures([("a", "1"), ("bb", "x")], "a: 1\nbb: x\n")
+        self.assertEqual(
+            m,
+            {
+                "max_input_bytes": 11,
+                "max_nodes": 5,
+                "max_mapping_entries": 2,
+                "max_owned_bytes": 5 * 64 + 2 * 24 + 1 + 2 + 1,
+                "max_scalar_bytes": 2,
+                "max_key_bytes": 66,
+            },
+        )
+
     def test_nested_fanout_doubles(self):
         out = {r[0]: r for r in rows(rl, "ladder-nested-fanout.r1.json")}
         self.assertEqual(

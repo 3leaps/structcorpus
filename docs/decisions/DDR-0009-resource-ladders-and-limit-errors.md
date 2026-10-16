@@ -42,7 +42,7 @@ item.
    asserted by the generator, and an independent event-order model checks it.
    An alias is checked before its copy (section 5.4).
 4. **Stress ladders,** all stress tier, hazardous, with the SecDR-0002 default
-   budgets, under `yamlprims-core` r3:
+   budgets:
 
    | Ladder | Range | Expectations |
    | --- | --- | --- |
@@ -51,6 +51,22 @@ item.
    | many keys | 10 to 100,000 keys | events, and a duplicate-key error for the variant with a repeated key |
    | late failure | 1,024 to 262,144 valid entries | a syntax or duplicate-key error |
    | depth | 8 to 1,024 nested sequences | events only |
+
+   An expected error in a stress ladder must be the first error. The
+   specification's limits are proposed defaults, so a ladder that expects an
+   error is bound to **`yamlprims-core-stress` r1**: `yamlprims-core` r3 with
+   explicit limits large enough to reach each defect. Those are the proposed
+   defaults, except `max_nodes` (1,048,576) and `max_mapping_entries`
+   (524,288).
+
+   For every row that expects an error, the generator recounts the measures as
+   built, through the defect, and refuses any row where another limit would be
+   reached first. That covers input bytes, nodes, mapping entries, owned bytes,
+   and scalar and key bytes. A syntax error is outranked only by the input gate
+   (section 7.1). A recipe may pass a profile limit to its generator as
+   `limit_<field>`, and generation fails unless it equals the profile's value.
+   Ladders with events only stay under `yamlprims-core` r3: format events are
+   bound to no profile.
 5. **Depth carries no limit expectation** until the specification defines
    how load depth is counted. Depth boundaries are added as a new recipe once
    it does.
@@ -62,13 +78,20 @@ item.
    - each result records the outcome, the exit code, the memory-limit flag,
      the elapsed time, and the length and sha256 of standard output, never the
      output itself;
+   - each result also records the limits that were enforced, the enforcement
+     mechanism, and `peak_memory: not_measured`. Memory is bounded, and an
+     out-of-memory kill is observed, but peak use is not measured;
    - comparing output with expectations is the consumer driver's job;
    - an unavailable runtime reports every selected case as `blocked`.
 
 ## Consequences
 
-- Consumers get limit boundaries that do not depend on the specification's
-  proposed defaults, and stress inputs that are bounded when run.
+- Consumers get limit boundaries and stress-ladder errors that do not depend on
+  the specification's proposed defaults, and stress inputs that are bounded when
+  run.
+- A `run` result records execution, not conformance: `pass` means the command
+  completed within its budgets. It is not a comparison with expected values,
+  and it is not qualification evidence.
 - `max_input_bytes`, `max_documents`, `max_output_bytes`, and `max_warnings`
   are not load-error boundaries here, because the specification tests them
   through the input gate, stream entrypoints, encoders, and M3, respectively.

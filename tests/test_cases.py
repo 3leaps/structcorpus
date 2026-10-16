@@ -178,6 +178,16 @@ class TestEventNotation(CaseRepo):
 SPEC_V13_URL = "https://github.com/3leaps/yamlprims/blob/spec-v1.3/docs/spec/yamlprims-spec.md"
 
 
+SPEC13_PROFILES = {
+    "yamlprims-core.r3.json",
+    "yamlprims-core-merge-apply.r3.json",
+    "yamlprims-core-merge-as-key.r3.json",
+    "yamlprims-core-stream.r3.json",
+    "yamlprims-core-limits.r2.json",
+    "yamlprims-core-stress.r1.json",
+}
+
+
 class TestSpec13(CaseRepo):
     """Exact rows from the yamlprims specification revision 1.3 tables, written out here."""
 
@@ -287,7 +297,7 @@ class TestSpec13(CaseRepo):
 
     def test_r3_profiles_cite_spec_13(self):
         for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
-            if name.endswith(".r3.json") or name == "yamlprims-core-limits.r2.json":
+            if name in SPEC13_PROFILES:
                 with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
                     prof = json.load(fh)
                 self.assertEqual(prof["cites"][0]["url"], SPEC_V13_URL, name)
@@ -297,9 +307,7 @@ class TestSpec13(CaseRepo):
         for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
             with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
                 prof = json.load(fh)
-            if prof["id"].startswith("yamlprims-core") and not (
-                name.endswith(".r3.json") or name == "yamlprims-core-limits.r2.json"
-            ):
+            if prof["id"].startswith("yamlprims-core") and name not in SPEC13_PROFILES:
                 self.assertNotIn(SPEC_V13_URL, [c["url"] for c in prof["cites"]], name)
 
 

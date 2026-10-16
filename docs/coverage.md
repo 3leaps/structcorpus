@@ -23,7 +23,7 @@ Release stages are defined in
 | Non-hazardous adversarial recipes: exact binary64/binary32 rounding thresholds, double-quoted escapes, inline versus aliased merge pairs, tag-heavy trees and tag-wrapper limit boundaries (312 generated cases, provisional) | Implemented |
 | Committed adversarial cases: alias validity, block-scalar chomping and indentation with LF and CRLF, location precision (BOM, multibyte, tab, lone CR, U+2028), diagnostics inputs, the UTF-8 input gate (NUL, invalid UTF-8, UTF-16, UTF-32), and explicit and composite keys (58 cases, provisional) | Implemented |
 | Limit boundaries for alias events, expanded nodes, mapping entries, and nodes under `yamlprims-core-limits` r2, with configured values (DDR-0009) | Implemented, provisional |
-| Stress ladders: alias fan-out, nested fan-out, many keys, late failure, depth (stress tier, hazardous, budgeted) | Implemented, provisional |
+| Stress ladders: alias fan-out, nested fan-out, many keys, late failure, depth (stress tier, hazardous, budgeted); expected errors bound to `yamlprims-core-stress` r1 | Implemented, provisional |
 | Depth limit boundaries | Planned: the specification does not yet define how load depth is counted |
 | Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |
 | Containment runner with self-tests (SecDR-0002): bounded execution of a caller-supplied command | Implemented |

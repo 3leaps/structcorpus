@@ -187,43 +187,77 @@ def gen_nested_fanout(sizes):
         yield "nested-%02d" % depth, "resource-limits", "\n".join(lines) + "\n", None, events(*body)
 
 
-def gen_many_keys(sizes):
+def flat_mapping_measures(pairs, text):
+    """Section 6 counters for a block mapping of plain string keys and plain scalar values.
+
+    Counted as built, through the last pair given (a duplicate pair included: its key node is
+    created before key equality is checked). Values here resolve to Int or String; only String
+    bytes add weight.
+    """
+    nodes = 1 + 2 * len(pairs)
+    owned = 64 * nodes + 24 * len(pairs)
+    longest = 0
+    for k, v in pairs:
+        owned += len(k.encode())
+        if not v.isdigit():
+            owned += len(v.encode())
+        longest = max(longest, len(k.encode()), len(v.encode()))
+    return {
+        "max_input_bytes": len(text.encode()),
+        "max_nodes": nodes,
+        "max_mapping_entries": len(pairs),
+        "max_owned_bytes": owned,
+        "max_scalar_bytes": longest,
+        "max_key_bytes": 64 + longest,
+    }
+
+
+def within(limits, measures, row):
+    """A ladder row whose expected error is a defect must reach that defect first (section 7.1)."""
+    for name, value in measures.items():
+        if value > limits[name]:
+            raise ValueError(
+                "%s: %s %d exceeds the profile's %d, so the defect is not the first error"
+                % (row, name, value, limits[name])
+            )
+
+
+def gen_many_keys(sizes, limits):
     """N keys sharing a 32-byte prefix; and the same mapping with its first key repeated last."""
     prefix = "p" * 32
     for n in sizes:
         keys = ["%s%06d" % (prefix, i) for i in range(n)]
+        pairs = [(k, str(i)) for i, k in enumerate(keys)]
         lines = "".join("%s: %d\n" % (k, i) for i, k in enumerate(keys))
         body = ["+MAP"]
         for i, k in enumerate(keys):
             body += ["=VAL :" + k, "=VAL :%d" % i]
         yield "keys-%06d" % n, "resource-limits", lines, None, events(*(body + ["-MAP"]))
         dup = lines + "%s: dup\n" % keys[0]
+        rid = "keys-%06d-dup-last" % n
+        within(limits, flat_mapping_measures(pairs + [(keys[0], "dup")], dup), rid)
         dup_events = events(*(body + ["=VAL :" + keys[0], "=VAL :dup", "-MAP"]))
-        yield (
-            "keys-%06d-dup-last" % n,
-            "resource-limits",
-            dup,
-            {"error": {"phase": "structure", "kind": "duplicate_key"}},
-            dup_events,
-        )
+        yield rid, "resource-limits", dup, {"error": {"phase": "structure", "kind": "duplicate_key"}}, dup_events
 
 
-def gen_late_failure(sizes):
+def gen_late_failure(sizes, limits):
     """A valid prefix of N entries, then a defect: an unclosed flow sequence, or a duplicate key."""
     for n in sizes:
-        body = "".join("k%07d: %d\n" % (i, i) for i in range(n))
-        yield "late-%07d-syntax" % n, "resource-limits", body + "z: [\n", {"error": {"phase": "syntax"}}, INVALID
+        pairs = [("k%07d" % i, str(i)) for i in range(n)]
+        body = "".join("%s: %s\n" % kv for kv in pairs)
+        syntax = body + "z: [\n"
+        rid = "late-%07d-syntax" % n
+        # A syntax error outranks every later error except the input gate (section 7.1).
+        within(limits, {"max_input_bytes": len(syntax.encode())}, rid)
+        yield rid, "resource-limits", syntax, {"error": {"phase": "syntax"}}, INVALID
         prefix = ["+MAP"]
-        for i in range(n):
-            prefix += ["=VAL :k%07d" % i, "=VAL :%d" % i]
+        for k, v in pairs:
+            prefix += ["=VAL :" + k, "=VAL :" + v]
+        text = body + "k0000000: x\n"
+        rid = "late-%07d-dup" % n
+        within(limits, flat_mapping_measures(pairs + [("k0000000", "x")], text), rid)
         dup = events(*(prefix + ["=VAL :k0000000", "=VAL :x", "-MAP"]))
-        yield (
-            "late-%07d-dup" % n,
-            "resource-limits",
-            body + "k0000000: x\n",
-            {"error": {"phase": "structure", "kind": "duplicate_key"}},
-            dup,
-        )
+        yield rid, "resource-limits", text, {"error": {"phase": "structure", "kind": "duplicate_key"}}, dup
 
 
 def gen_depth(sizes):
@@ -242,13 +276,17 @@ def generate(parameters):
         rows = gen_boundaries(limits)
     else:
         sizes = [int(x) for x in parameters["sizes"].split(",")]
-        rows = {
-            "alias-fanout": gen_alias_fanout,
-            "nested-fanout": gen_nested_fanout,
-            "many-keys": gen_many_keys,
-            "late-failure": gen_late_failure,
-            "depth": gen_depth,
-        }[kind](sizes)
+        if kind in ("many-keys", "late-failure"):
+            # Rows with an expected error check every competing limit against the profile's own
+            # explicit limits, which the recipe repeats as parameters.
+            limits = {k[len("limit_") :]: v for k, v in parameters.items() if k.startswith("limit_")}
+            rows = {"many-keys": gen_many_keys, "late-failure": gen_late_failure}[kind](sizes, limits)
+        else:
+            rows = {
+                "alias-fanout": gen_alias_fanout,
+                "nested-fanout": gen_nested_fanout,
+                "depth": gen_depth,
+            }[kind](sizes)
     for local_id, category, text, expectation, events_expectation in rows:
         if events_expectation is None:
             yield local_id, category, text, expectation, []

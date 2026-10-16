@@ -222,6 +222,9 @@ class TestRunCases(FakeRuntime):
 
     def test_results_carry_no_raw_output(self):
         fake = {
+            "limits": dict(runner.DEFAULTS, wall_ms=2000),
+            "mechanism": "cgroup v2 (docker)",
+            "peak_memory": "not_measured",
             "outcome": "pass",
             "exit_code": 0,
             "oom_killed": False,
@@ -241,3 +244,26 @@ class TestRunCases(FakeRuntime):
             self.assertNotIn("stdout", r)
             self.assertEqual(r["stdout_bytes"], len(fake["stdout"]))
             self.assertNotIn("hostile", json.dumps(r))
+
+    def test_results_record_enforcement_not_measurement(self):
+        fake = {
+            "outcome": "pass",
+            "exit_code": 0,
+            "oom_killed": False,
+            "elapsed_s": 0.1,
+            "stdout": b"",
+            "output_excess": 0,
+            "limits": dict(runner.DEFAULTS),
+            "mechanism": "cgroup v2 (docker)",
+            "peak_memory": "not_measured",
+        }
+        rt = self.make('case "$1" in info) echo 2;; esac\n')
+        original = runner.run_contained
+        runner.run_contained = lambda *a, **k: fake
+        try:
+            [row, *_] = list(runner.run_cases(self.root, "image", ["true"], runtime=rt))
+        finally:
+            runner.run_contained = original
+        self.assertEqual(row["peak_memory"], "not_measured")
+        self.assertEqual(row["mechanism"], "cgroup v2 (docker)")
+        self.assertEqual(set(row["limits"]), set(runner.DEFAULTS))
