@@ -29,6 +29,7 @@ Release stages are defined in
 | Containment runner with self-tests (SecDR-0002): bounded execution of a caller-supplied command | Implemented |
 | Running hostile YAML cases through a parser command (`runner.py run`), one container per case with its budgets | Implemented; comparing output with expectations is the consumer driver's job |
 | `list`, stress-tier plumbing, recipe hazards and budgets, explicit-limits profile `yamlprims-core-limits` (DDR-0007) | Implemented |
+| Event notation `structcorpus-events/1` (DDR-0010): schema, validator, reference codec with pinned-runner vectors | Implemented; no case uses it yet, and consumers report it as unsupported until they read it |
 | yaml-test-suite import, Windows/Linux parity matrix | Planned, 0.3 |
 | Binding lifetime and streaming input surfaces | Unsupported until a consumer exposes them |
 | JSON, XML | Reserved |

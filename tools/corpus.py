@@ -24,6 +24,8 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import events as event_notation  # noqa: E402
 
 MAX_FIXTURE_BYTES = 256 * 1024
 MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
@@ -388,6 +390,9 @@ def check_case(root, rec, profiles, spans, errors, where):
     events = exp.get("events")
     event_list = None
     if events is not None:
+        notation = events.get("notation")
+        if notation not in event_notation.NOTATIONS:
+            errors.append("%s: unknown event notation %r" % (where, notation))
         if events.get("status") == "valid":
             event_list = events.get("events")
             if not isinstance(event_list, list) or not all(
@@ -395,10 +400,18 @@ def check_case(root, rec, profiles, spans, errors, where):
             ):
                 errors.append("%s: valid events need an event list in yaml-test-suite notation" % where)
                 event_list = None
-            elif any(EVENT_ESCAPED_RAW_RE.search(e) for e in event_list):
+            elif notation == event_notation.YTS and any(EVENT_ESCAPED_RAW_RE.search(e) for e in event_list):
                 errors.append(
                     "%s: event text contains a raw NUL, BS, TAB, LF, or CR; the notation escapes these" % where
                 )
+            elif notation in event_notation.NOTATIONS:
+                # Parse each event into fields under its notation (DDR-0010).
+                for i, e in enumerate(event_list):
+                    try:
+                        event_notation.parse(e, notation)
+                    except event_notation.NotationError as exc:
+                        errors.append("%s: event %d: %s" % (where, i, exc))
+                        break
         elif events.get("status") == "invalid":
             if "events" in events:
                 errors.append("%s: invalid input must not list events" % where)
