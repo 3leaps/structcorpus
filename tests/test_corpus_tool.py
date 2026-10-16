@@ -137,10 +137,6 @@ class TestRepositoryRules(RepoCase):
         self.assertEqual(corpus.main(["validate", "--root", self.root]), 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestInvisibleText(unittest.TestCase):
     """Reviewed text holds no raw invisible characters; metadata uses JSON escapes."""
 
@@ -169,11 +165,13 @@ class TestInvisibleText(unittest.TestCase):
             0x7F,
             0x85,
             0x9F,
+            0x061C,
             0x200B,
             0x200F,
             0x2028,
             0x2029,
             0x202E,
+            0x2060,
             0x2066,
             0x2069,
             0xFEFF,
@@ -205,3 +203,13 @@ class TestInvisibleText(unittest.TestCase):
 
     def test_shipped_tree_is_clean(self):
         self.assertEqual(corpus.check_invisible_text(REPO), [])
+
+    def test_cache_substring_does_not_exempt_reviewed_text(self):
+        self.write("docs/about-__pycache__.md", "bad \u202e here\n")
+        self.assertEqual(
+            corpus.check_invisible_text(self.root), ["docs/about-__pycache__.md:1: raw U+202E; write it as an escape"]
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

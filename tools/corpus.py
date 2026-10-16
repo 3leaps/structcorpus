@@ -220,7 +220,7 @@ def check_repository(root):
 # C0 controls other than TAB, LF, and CR, DEL, C1 controls, U+2028/U+2029, bidi controls,
 # zero-width characters, and the BOM. Metadata writes them as JSON \u escapes.
 INVISIBLE_RE = re.compile(
-    "[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u2028-\\u202e\\u2066-\\u2069\\ufeff]"
+    "[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x9f\\u061c\\u200b-\\u200f\\u2028-\\u202e\\u2060\\u2066-\\u2069\\ufeff]"
 )
 TEXT_TREES = ("docs", "generators", "manifests", "recipes", "schemas", "tests", "tools", ".github")
 TEXT_FILES = ("README.md", "AGENTS.md", "Makefile", ".gitattributes", ".gitignore")
@@ -235,7 +235,7 @@ def check_invisible_text(root):
         if os.path.isdir(top):
             paths.extend(_walk_files(top))
     for path in paths:
-        if not os.path.isfile(path) or "__pycache__" in path:
+        if not os.path.isfile(path) or "__pycache__" in os.path.relpath(path, root).split(os.sep):
             continue
         rel = os.path.relpath(path, root).replace(os.sep, "/")
         with open(path, "rb") as fh:
