@@ -54,6 +54,12 @@ class TestCanonicalJson(unittest.TestCase):
         self.assertEqual(corpus.canonical_json(corpus.load_json_strict(text.encode())), text)
 
 
+def stored_json(value):
+    """JSON as the repository stores it: UTF-8, with invisible characters written as escapes."""
+    text = json.dumps(value, ensure_ascii=False)
+    return corpus.INVISIBLE_RE.sub(lambda m: "\\u%04x" % ord(m.group(0)), text)
+
+
 class CaseRepo(unittest.TestCase):
     """A disposable copy of the repository's manifests and fixtures."""
 
@@ -76,7 +82,7 @@ class CaseRepo(unittest.TestCase):
                 fh.write(raw)
             else:
                 for c in cases if cases is not None else self.cases:
-                    fh.write(json.dumps(c, ensure_ascii=False).encode() + b"\n")
+                    fh.write(stored_json(c).encode() + b"\n")
 
     def errors(self):
         return corpus.check_repository(self.root) + corpus.check_manifests(self.root)

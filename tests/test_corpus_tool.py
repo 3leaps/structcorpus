@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import corpus  # noqa: E402
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 ATTRS = (
     b"* text=auto\n"
     b"/fixtures/** -text -filter -ident -working-tree-encoding\n"
@@ -137,3 +139,69 @@ class TestRepositoryRules(RepoCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestInvisibleText(unittest.TestCase):
+    """Reviewed text holds no raw invisible characters; metadata uses JSON escapes."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = self._tmp.name
+        os.makedirs(os.path.join(self.root, "docs"))
+        os.makedirs(os.path.join(self.root, "fixtures", "yaml"))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write(self, rel, text):
+        with open(os.path.join(self.root, *rel.split("/")), "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+
+    def test_rejected_characters(self):
+        for code in (
+            0x00,
+            0x07,
+            0x0B,
+            0x0C,
+            0x1B,
+            0x7F,
+            0x85,
+            0x9F,
+            0x200B,
+            0x200F,
+            0x2028,
+            0x2029,
+            0x202E,
+            0x2066,
+            0x2069,
+            0xFEFF,
+        ):
+            with self.subTest(code=hex(code)):
+                self.write("docs/a.md", "ok\nbad " + chr(code) + " here\n")
+                errs = corpus.check_invisible_text(self.root)
+                self.assertEqual(errs, ["docs/a.md:2: raw U+%04X; write it as an escape" % code])
+
+    def test_allowed_characters(self):
+        self.write("docs/a.md", "tab\there\r\nemdash \u2014 e\u0301 \u00e9 \u20ac \U0001f600\n")
+        self.assertEqual(corpus.check_invisible_text(self.root), [])
+
+    def test_fixtures_are_exempt(self):
+        self.write("fixtures/yaml/x.yaml", "k: a\u2028b\n")
+        self.assertEqual(corpus.check_invisible_text(self.root), [])
+
+    def test_escaped_in_json_is_fine_raw_is_not(self):
+        os.makedirs(os.path.join(self.root, "manifests"))
+        self.write("manifests/cases.jsonl", '{"v":"a\\u2028b"}\n')
+        self.assertEqual(corpus.check_invisible_text(self.root), [])
+        self.write("manifests/cases.jsonl", '{"v":"a\u2028b"}\n')
+        self.assertEqual(len(corpus.check_invisible_text(self.root)), 1)
+
+    def test_validate_enforces_it(self):
+        # The repository check (and so `corpus.py validate`) runs this rule, not only the helper.
+        self.write("docs/a.md", "bad \u202e here\n")
+        self.assertIn("docs/a.md:1: raw U+202E; write it as an escape", corpus.check_repository(self.root))
+
+    def test_shipped_tree_is_clean(self):
+        self.assertEqual(corpus.check_invisible_text(REPO), [])

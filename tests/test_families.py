@@ -353,6 +353,22 @@ class TestStressLadders(unittest.TestCase):
             list(rl.generate(params))
         self.assertIn("keys-100000-dup-last: max_mapping_entries 100001 exceeds", str(ctx.exception))
 
+    def test_rejects_node_and_owned_byte_caps_that_would_fire_first(self):
+        # late-0262144-dup is 524,291 nodes and 41,943,265 owned bytes at its duplicate (section 6).
+        base = recipe("ladder-late-failure.r1.json")["parameters"]
+        for name, value, measured in (
+            ("max_nodes", 524290, 524291),
+            ("max_owned_bytes", 41943264, 41943265),
+        ):
+            with self.subTest(limit=name):
+                with self.assertRaises(ValueError) as ctx:
+                    list(rl.generate(dict(base, **{"limit_" + name: value})))
+                self.assertIn(
+                    "late-0262144-dup: %s %d exceeds the profile's %d" % (name, measured, value), str(ctx.exception)
+                )
+                # One more and the row is accepted again.
+                self.assertTrue(list(rl.generate(dict(base, **{"limit_" + name: measured}))))
+
     def test_syntax_row_rejects_an_input_gate_that_would_fire_first(self):
         params = dict(recipe("ladder-late-failure.r1.json")["parameters"], limit_max_input_bytes=14255 - 1)
         with self.assertRaises(ValueError) as ctx:

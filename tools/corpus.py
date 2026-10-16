@@ -193,6 +193,7 @@ def check_repository(root):
                 errors.append("%s: %d bytes exceeds %d per file" % (rel, size, MAX_FIXTURE_BYTES))
     if total > MAX_PAYLOAD_BYTES:
         errors.append("committed payload %d bytes exceeds %d" % (total, MAX_PAYLOAD_BYTES))
+    errors.extend(check_invisible_text(root))
     for tree in ("manifests", "schemas"):
         top = os.path.join(root, tree)
         if not os.path.isdir(top):
@@ -212,6 +213,42 @@ def check_repository(root):
                 except ValueError as exc:
                     where = "%s:%d" % (rel, lineno) if rel.endswith(".jsonl") else rel
                     errors.append("%s: %s" % (where, exc))
+    return errors
+
+
+# Characters that are invisible or reinterpret text, never allowed raw in reviewed text:
+# C0 controls other than TAB, LF, and CR, DEL, C1 controls, U+2028/U+2029, bidi controls,
+# zero-width characters, and the BOM. Metadata writes them as JSON \u escapes.
+INVISIBLE_RE = re.compile(
+    "[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u2028-\\u202e\\u2066-\\u2069\\ufeff]"
+)
+TEXT_TREES = ("docs", "generators", "manifests", "recipes", "schemas", "tests", "tools", ".github")
+TEXT_FILES = ("README.md", "AGENTS.md", "Makefile", ".gitattributes", ".gitignore")
+
+
+def check_invisible_text(root):
+    """Reviewed text outside the byte-exact trees holds no raw invisible characters."""
+    errors = []
+    paths = [os.path.join(root, f) for f in TEXT_FILES]
+    for tree in TEXT_TREES:
+        top = os.path.join(root, tree)
+        if os.path.isdir(top):
+            paths.extend(_walk_files(top))
+    for path in paths:
+        if not os.path.isfile(path) or "__pycache__" in path:
+            continue
+        rel = os.path.relpath(path, root).replace(os.sep, "/")
+        with open(path, "rb") as fh:
+            data = fh.read()
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            continue  # not text
+        for lineno, line in enumerate(text.split("\n"), 1):
+            m = INVISIBLE_RE.search(line)
+            if m:
+                errors.append("%s:%d: raw U+%04X; write it as an escape" % (rel, lineno, ord(m.group(0))))
+                break
     return errors
 
 
