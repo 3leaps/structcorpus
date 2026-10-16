@@ -317,6 +317,53 @@ class TestSpec13(CaseRepo):
                 self.assertNotIn(SPEC_V13_URL, [c["url"] for c in prof["cites"]], name)
 
 
+class TestEventNotations(CaseRepo):
+    """Validation of both event notations on a committed record (DDR-0010)."""
+
+    def bell_case(self, notation, scalar_event):
+        idx = next(i for i, c in enumerate(self.cases) if c["id"] == "yaml.input.escaped-nul")
+        self.cases = [json.loads(json.dumps(c)) for c in self.base]
+        ev = self.cases[idx]["expectations"]["events"]
+        ev["notation"] = notation
+        ev["events"][4] = scalar_event
+        self.save()
+        return self.errors()
+
+    def test_sce1_record_with_escaped_control_is_valid(self):
+        self.assertEqual(self.bell_case("structcorpus-events/1", '=VAL "a\\x07b'), [])
+
+    def test_sce1_rejects_raw_control(self):
+        errs = self.bell_case("structcorpus-events/1", '=VAL "a\x07b')
+        self.assertTrue(any("raw U+0007 must be escaped" in e for e in errs), errs)
+
+    def test_sce1_rejects_noncanonical_escape(self):
+        errs = self.bell_case("structcorpus-events/1", '=VAL "a\\x0bb')
+        self.assertTrue(any("two uppercase hex digits" in e for e in errs), errs)
+
+    def test_legacy_validation_does_not_impose_converter_domain(self):
+        # A percent-decoded tag can contain '>'; the legacy text cannot be converted
+        # unambiguously, but adding a codec does not invalidate preserved imports.
+        self.assertEqual(self.bell_case("yaml-test-suite", '=VAL <!a>b> "x'), [])
+        errs = self.bell_case("structcorpus-events/1", '=VAL <!a>b> "x')
+        self.assertTrue(any("style marker" in e for e in errs), errs)
+
+    def test_unknown_notation(self):
+        errs = self.bell_case("yaml-test-suite/2", '=VAL "a\\0b')
+        self.assertTrue(any("unknown event notation" in e for e in errs), errs)
+
+    def test_every_committed_event_parses_and_rerenders(self):
+        sys.path.insert(0, os.path.join(REPO, "tools"))
+        import events as ev
+
+        n = 0
+        for c in self.base:
+            e = c["expectations"].get("events", {})
+            for text in e.get("events", []):
+                self.assertEqual(ev.render(ev.parse(text, e["notation"]), e["notation"]), text, c["id"])
+                n += 1
+        self.assertGreater(n, 800)
+
+
 class TestLimitConfigured(CaseRepo):
     """configured on limit errors (DDR-0009), on the committed alias-event limit case."""
 

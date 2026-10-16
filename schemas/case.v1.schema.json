@@ -122,7 +122,7 @@
       "additionalProperties": false,
       "required": ["notation", "status"],
       "properties": {
-        "notation": {"const": "yaml-test-suite"},
+        "notation": {"enum": ["yaml-test-suite", "structcorpus-events/1"]},
         "status": {"enum": ["valid", "invalid"]},
         "events": {"type": "array", "minItems": 2, "items": {"type": "string", "pattern": "^[+=-][A-Z]{3}( .*)?$"}}
       },
