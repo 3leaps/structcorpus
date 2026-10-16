@@ -1,0 +1,53 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/resource_ladders.py",
+  "profile": "yamlprims-core-stress",
+  "profile_revision": 1,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from YAML 1.2.2 and the published yamlprims specification revision 1.3, sections 5.4 and 6, with the explicit limits of the yamlprims-core-stress r1 profile."
+  },
+  "id": "ladder-late-failure",
+  "parameters": {
+    "set": "late-failure",
+    "sizes": "1024,32768,262144",
+    "limit_max_input_bytes": 8388608,
+    "limit_max_nodes": 1048576,
+    "limit_max_owned_bytes": 67108864,
+    "limit_max_scalar_bytes": 1048576,
+    "limit_max_key_bytes": 65536,
+    "limit_max_mapping_entries": 524288
+  },
+  "execution": {
+    "tier": "stress",
+    "max_cases": 100,
+    "max_output_bytes": 268435456,
+    "hazards": [
+      "late-failure",
+      "large-input"
+    ],
+    "budgets": {
+      "wall_ms": 2000,
+      "memory_bytes": 536870912,
+      "output_bytes": 65536
+    }
+  },
+  "expected": {
+    "cases": 6,
+    "input_bytes": 9745583,
+    "digest": "sha256:b33a7b79d569c593751c3b6fe4a7a5f433e28340b5b1fbb50d2924aec19fca27"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "A valid prefix of 1,024 to 262,144 entries followed by an unclosed flow sequence (a syntax error) or a duplicate of the first key. Expected errors are decided by YAML and the profile; time and memory are measured. Bound to an explicit-limits profile so that the expected error is the first one; the generator checks every competing limit for each row with an error."
+  }
+}

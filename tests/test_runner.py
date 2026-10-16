@@ -6,6 +6,7 @@ a fake runtime, so they run anywhere.
 """
 
 import io
+import json
 import os
 import stat
 import sys
@@ -176,3 +177,93 @@ class TestDefaults(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(os.name == "nt", "shell stub")
+class TestRunCases(FakeRuntime):
+    """`runner.py run` over a real hydrated root, with no container runtime."""
+
+    @classmethod
+    def setUpClass(cls):
+        import corpus
+
+        cls._out = tempfile.TemporaryDirectory()
+        cls.root = os.path.join(cls._out.name, "h")
+        corpus.hydrate(corpus.ROOT, cls.root, "stress", {"ladder-depth", "resource-boundaries"})
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._out.cleanup()
+
+    def test_blocked_runtime_reports_every_hazardous_case(self):
+        rt = self.make('case "$1" in info) echo 1;; *) echo RAN >> "$0.log";; esac\n')
+        rows = list(runner.run_cases(self.root, "image", ["true"], runtime=rt))
+        self.assertEqual(len(rows), 8)  # the depth ladder; the boundaries carry no hazards
+        self.assertEqual({r["outcome"] for r in rows}, {"blocked"})
+        self.assertFalse(os.path.exists(rt + ".log"))
+
+    def test_all_includes_non_hazardous_cases(self):
+        rt = self.make('case "$1" in info) echo 1;; esac\n')
+        rows = list(runner.run_cases(self.root, "image", ["true"], hazardous_only=False, runtime=rt))
+        self.assertEqual(len(rows), 8 + 12)
+
+    def test_tampered_root_is_refused_before_running(self):
+        import shutil
+
+        bad = os.path.join(self._out.name, "tampered")
+        shutil.copytree(self.root, bad)
+        target = os.path.join(bad, "inputs", "yaml", "ladder-depth", "depth-0008.yaml")
+        with open(target, "ab") as fh:
+            fh.write(b"#")
+        rt = self.make('case "$1" in info) echo 2;; *) echo RAN >> "$0.log";; esac\n')
+        with self.assertRaises(ValueError):
+            list(runner.run_cases(bad, "image", ["true"], runtime=rt))
+        self.assertFalse(os.path.exists(rt + ".log"))
+
+    def test_results_carry_no_raw_output(self):
+        fake = {
+            "limits": dict(runner.DEFAULTS, wall_ms=2000),
+            "mechanism": "cgroup v2 (docker)",
+            "peak_memory": "not_measured",
+            "outcome": "pass",
+            "exit_code": 0,
+            "oom_killed": False,
+            "elapsed_s": 0.1,
+            "stdout": b"\x1b[31mhostile",
+            "output_excess": 0,
+        }
+        rt = self.make('case "$1" in info) echo 2;; esac\n')
+        original = runner.run_contained
+        runner.run_contained = lambda *a, **k: fake
+        try:
+            rows = list(runner.run_cases(self.root, "image", ["true"], runtime=rt))
+        finally:
+            runner.run_contained = original
+        self.assertTrue(rows)
+        for r in rows:
+            self.assertNotIn("stdout", r)
+            self.assertEqual(r["stdout_bytes"], len(fake["stdout"]))
+            self.assertNotIn("hostile", json.dumps(r))
+
+    def test_results_record_enforcement_not_measurement(self):
+        fake = {
+            "outcome": "pass",
+            "exit_code": 0,
+            "oom_killed": False,
+            "elapsed_s": 0.1,
+            "stdout": b"",
+            "output_excess": 0,
+            "limits": dict(runner.DEFAULTS),
+            "mechanism": "cgroup v2 (docker)",
+            "peak_memory": "not_measured",
+        }
+        rt = self.make('case "$1" in info) echo 2;; esac\n')
+        original = runner.run_contained
+        runner.run_contained = lambda *a, **k: fake
+        try:
+            [row, *_] = list(runner.run_cases(self.root, "image", ["true"], runtime=rt))
+        finally:
+            runner.run_contained = original
+        self.assertEqual(row["peak_memory"], "not_measured")
+        self.assertEqual(row["mechanism"], "cgroup v2 (docker)")
+        self.assertEqual(set(row["limits"]), set(runner.DEFAULTS))

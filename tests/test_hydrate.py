@@ -399,3 +399,42 @@ class TestShippedRecipes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGeneratedLimitErrors(RecipeRepo):
+    """A generated limit error is checked against the recipe's profile at generation (DDR-0009)."""
+
+    def limit_recipe(self, configured):
+        gen = (
+            "def generate(parameters):\n"
+            "    err = {'phase': 'limit', 'kind': 'limit_exceeded', 'limit': 'max_nodes', 'configured': %d}\n"
+            "    yield 'r0000', 'resource-limits', '[1]\\n', {'error': err}, []\n" % configured
+        )
+        with open(os.path.join(self.root, "generators", "yaml", "tiny.py"), "w") as fh:
+            fh.write(gen)
+        self.recipe.update(profile="yamlprims-core-limits", profile_revision=2, parameters={"n": 1})
+
+    def test_matching_configured_generates(self):
+        self.limit_recipe(64)
+        self.assertEqual(len(list(corpus._recipe_cases(self.root, "recipes/yaml/tiny.r1.json", self.recipe))), 1)
+
+    def test_wrong_configured_fails_generation(self):
+        self.limit_recipe(65)
+        with self.assertRaises(corpus.HydrateError) as ctx:
+            list(corpus._recipe_cases(self.root, "recipes/yaml/tiny.r1.json", self.recipe))
+        self.assertIn("does not match the profile's max_nodes = 64", str(ctx.exception))
+
+    def test_row_without_any_expectation_fails(self):
+        with open(os.path.join(self.root, "generators", "yaml", "tiny.py"), "w") as fh:
+            fh.write("def generate(parameters):\n    yield 'r0000', 'resource-limits', '[1]\\n', None, []\n")
+        with self.assertRaises(corpus.HydrateError) as ctx:
+            list(corpus._recipe_cases(self.root, "recipes/yaml/tiny.r1.json", self.recipe))
+        self.assertIn("no expectation", str(ctx.exception))
+
+    def test_limit_parameter_must_match_profile(self):
+        self.recipe.update(
+            profile="yamlprims-core-limits", profile_revision=2, parameters={"n": 1, "limit_max_nodes": 65}
+        )
+        with self.assertRaises(corpus.HydrateError) as ctx:
+            list(corpus._recipe_cases(self.root, "recipes/yaml/tiny.r1.json", self.recipe))
+        self.assertIn("limit_max_nodes=65 does not match the profile's max_nodes", str(ctx.exception))

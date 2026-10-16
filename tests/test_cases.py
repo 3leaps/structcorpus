@@ -178,6 +178,16 @@ class TestEventNotation(CaseRepo):
 SPEC_V13_URL = "https://github.com/3leaps/yamlprims/blob/spec-v1.3/docs/spec/yamlprims-spec.md"
 
 
+SPEC13_PROFILES = {
+    "yamlprims-core.r3.json",
+    "yamlprims-core-merge-apply.r3.json",
+    "yamlprims-core-merge-as-key.r3.json",
+    "yamlprims-core-stream.r3.json",
+    "yamlprims-core-limits.r2.json",
+    "yamlprims-core-stress.r1.json",
+}
+
+
 class TestSpec13(CaseRepo):
     """Exact rows from the yamlprims specification revision 1.3 tables, written out here."""
 
@@ -287,7 +297,7 @@ class TestSpec13(CaseRepo):
 
     def test_r3_profiles_cite_spec_13(self):
         for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
-            if name.endswith(".r3.json") or name == "yamlprims-core-limits.r2.json":
+            if name in SPEC13_PROFILES:
                 with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
                     prof = json.load(fh)
                 self.assertEqual(prof["cites"][0]["url"], SPEC_V13_URL, name)
@@ -297,10 +307,55 @@ class TestSpec13(CaseRepo):
         for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
             with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
                 prof = json.load(fh)
-            if prof["id"].startswith("yamlprims-core") and not (
-                name.endswith(".r3.json") or name == "yamlprims-core-limits.r2.json"
-            ):
+            if prof["id"].startswith("yamlprims-core") and name not in SPEC13_PROFILES:
                 self.assertNotIn(SPEC_V13_URL, [c["url"] for c in prof["cites"]], name)
+
+
+class TestLimitConfigured(CaseRepo):
+    """configured on limit errors (DDR-0009), on the committed alias-event limit case."""
+
+    def limit_case(self):
+        return next(i for i, c in enumerate(self.cases) if c["id"] == "yaml.aliases.alias-events-limit")
+
+    def set_error(self, **err):
+        def edit(c):
+            v = next(v for v in c["expectations"]["value"] if "error" in v)
+            v["error"] = dict({"phase": "limit", "kind": "limit_exceeded", "limit": "max_alias_events"}, **err)
+
+        self.mutate(self.limit_case(), edit)
+
+    def test_matching_configured_is_accepted(self):
+        self.set_error(configured=8)
+        self.assertEqual([e for e in self.errors() if "configured" in e or "Limits field" in e], [])
+
+    def test_wrong_configured(self):
+        self.set_error(configured=9)
+        self.assertRejected("configured 9 does not match the profile's max_alias_events = 8")
+
+    def test_unknown_limit_name(self):
+        self.set_error(limit="max_magic")
+        self.assertRejected("is not a Limits field")
+
+    def test_configured_outside_limit_phase(self):
+        def edit(c):
+            v = next(v for v in c["expectations"]["value"] if "error" in v)
+            v["error"] = {"phase": "syntax", "configured": 8}
+
+        self.mutate(self.limit_case(), edit)
+        self.assertRejected("configured is only for limit errors")
+
+    def test_configured_needs_explicit_limits(self):
+        def edit(c):
+            c["expectations"]["value"] = [
+                {
+                    "profile": "yamlprims-core",
+                    "profile_revision": 3,
+                    "error": {"phase": "limit", "kind": "limit_exceeded", "limit": "max_alias_events", "configured": 8},
+                }
+            ]
+
+        self.mutate(self.limit_case(), edit)
+        self.assertRejected("configured needs a profile with explicit limits")
 
 
 class TestNodeLocationRejections(CaseRepo):

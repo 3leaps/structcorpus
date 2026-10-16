@@ -1,0 +1,52 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/resource_ladders.py",
+  "profile": "yamlprims-core-stress",
+  "profile_revision": 1,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from YAML 1.2.2 and the published yamlprims specification revision 1.3, sections 5.4 and 6, with the explicit limits of the yamlprims-core-stress r1 profile."
+  },
+  "id": "ladder-many-keys",
+  "parameters": {
+    "set": "many-keys",
+    "sizes": "10,100,1000,10000,100000",
+    "limit_max_input_bytes": 8388608,
+    "limit_max_nodes": 1048576,
+    "limit_max_owned_bytes": 67108864,
+    "limit_max_scalar_bytes": 1048576,
+    "limit_max_key_bytes": 65536,
+    "limit_max_mapping_entries": 524288
+  },
+  "execution": {
+    "tier": "stress",
+    "max_cases": 100,
+    "max_output_bytes": 268435456,
+    "hazards": [
+      "many-keys"
+    ],
+    "budgets": {
+      "wall_ms": 2000,
+      "memory_bytes": 536870912,
+      "output_bytes": 65536
+    }
+  },
+  "expected": {
+    "cases": 10,
+    "input_bytes": 10172980,
+    "digest": "sha256:cdabd1a20d0387140ca10656cc55d3b56a366a468e89ec3074f8b5816e5ce26a"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Block mappings of 10 to 100,000 keys sharing a 32-byte prefix, each also with the first key repeated last, which is a duplicate key. Format events for both; the duplicate is decided by YAML and the profile. Bound to an explicit-limits profile so that the expected error is the first one; the generator checks every competing limit for each row with an error."
+  }
+}

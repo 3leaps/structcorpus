@@ -1,0 +1,42 @@
+{
+  "schema_version": "profile/v1",
+  "id": "yamlprims-core-stress",
+  "revision": 1,
+  "dialect": "yaml-1.2.2",
+  "scalar_schema": "core",
+  "policy": {
+    "duplicate_keys": "reject",
+    "merge_keys": "reject",
+    "integer_range": "i128-u128",
+    "documents": "single",
+    "unknown_tags": "tagged-str",
+    "flow_indentation": "strict"
+  },
+  "limits": {
+    "max_input_bytes": 8388608,
+    "max_depth": 128,
+    "max_nodes": 1048576,
+    "max_expanded_nodes": 100000,
+    "max_alias_events": 10000,
+    "max_owned_bytes": 67108864,
+    "max_scalar_bytes": 1048576,
+    "max_key_bytes": 65536,
+    "max_mapping_entries": 524288,
+    "max_documents": 1024,
+    "max_output_bytes": 67108864,
+    "max_warnings": 1000
+  },
+  "cites": [
+    {
+      "title": "yamlprims specification",
+      "url": "https://github.com/3leaps/yamlprims/blob/spec-v1.3/docs/spec/yamlprims-spec.md",
+      "revision": "1.3 (tag spec-v1.3, commit 4cf97b2d4efec16b6b41ea6e1acb83164a76aa45, sha256 0ea53c3564c8907cebdb036d7383a840e767de395395b786c6d8ff5d8f86152d)"
+    },
+    {
+      "title": "YAML Ain't Markup Language (YAML) version 1.2",
+      "url": "https://yaml.org/spec/1.2.2/",
+      "revision": "1.2.2 (2021-10-01)"
+    }
+  ],
+  "description": "As yamlprims-core r3 (yamlprims specification revision 1.3, single-document entrypoints, strict flow indentation), with explicit resource limits (section 6) large enough that each stress ladder's defect is its first error. The specification's proposed defaults, except max_nodes and max_mapping_entries, which are raised so a 262,144-entry prefix loads. Expected errors in stress ladders bound to this profile do not depend on unpinned defaults."
+}

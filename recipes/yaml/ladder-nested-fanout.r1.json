@@ -1,0 +1,46 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/resource_ladders.py",
+  "profile": "yamlprims-core",
+  "profile_revision": 3,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from YAML 1.2.2 and the published yamlprims specification revision 1.3, sections 5.4 and 6."
+  },
+  "id": "ladder-nested-fanout",
+  "parameters": {
+    "set": "nested-fanout",
+    "sizes": "3,6,9,12,15"
+  },
+  "execution": {
+    "tier": "stress",
+    "max_cases": 100,
+    "max_output_bytes": 268435456,
+    "hazards": [
+      "alias-expansion"
+    ],
+    "budgets": {
+      "wall_ms": 2000,
+      "memory_bytes": 536870912,
+      "output_bytes": 65536
+    }
+  },
+  "expected": {
+    "cases": 5,
+    "input_bytes": 962,
+    "digest": "sha256:8d4899483b719ff690c9de5d79e443aeae631839c279142d9c353340455b2fb9"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Each level aliases the previous level twice, so the fully expanded tree doubles per level, up to 2^16 copies of the base sequence. Only format-level events are expected; time and memory are measured."
+  }
+}
