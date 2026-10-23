@@ -1,0 +1,42 @@
+{
+  "schema_version": "profile/v1",
+  "id": "yamlprims-core-depth128",
+  "revision": 1,
+  "dialect": "yaml-1.2.2",
+  "scalar_schema": "core",
+  "policy": {
+    "duplicate_keys": "reject",
+    "merge_keys": "reject",
+    "integer_range": "i128-u128",
+    "documents": "single",
+    "unknown_tags": "tagged-str",
+    "flow_indentation": "strict"
+  },
+  "limits": {
+    "max_input_bytes": 65536,
+    "max_depth": 128,
+    "max_nodes": 512,
+    "max_expanded_nodes": 16,
+    "max_alias_events": 16,
+    "max_owned_bytes": 65536,
+    "max_scalar_bytes": 1024,
+    "max_key_bytes": 1024,
+    "max_mapping_entries": 16,
+    "max_documents": 4,
+    "max_output_bytes": 65536,
+    "max_warnings": 16
+  },
+  "cites": [
+    {
+      "title": "yamlprims specification",
+      "url": "https://github.com/3leaps/yamlprims/blob/spec-v1.4/docs/spec/yamlprims-spec.md",
+      "revision": "1.4 (tag spec-v1.4, commit aeca2f5f7832320cc33511cf3faf3c8e56384fbf, sha256 97acb274a18fb9d30a15fe05ce856ce4ba2e169c187ef12db8e824a8a925af0b)"
+    },
+    {
+      "title": "YAML Ain't Markup Language (YAML) version 1.2",
+      "url": "https://yaml.org/spec/1.2.2/",
+      "revision": "1.2.2 (2021-10-01)"
+    }
+  ],
+  "description": "yamlprims specification revision 1.4, single-document entrypoints, strict flow indentation, merge directives rejected, with explicit limits (section 6). max_depth is 128. Every other limit is above the depth-boundary recipes, including the tree those inputs would build. S_127(0) and S_128(0) load. S_129(0) fails max_depth at the 129th bracket. Alias insertion at k = 125 and k = 126 loads. k = 127 stays within source level 128 and fails alias placement."
+}

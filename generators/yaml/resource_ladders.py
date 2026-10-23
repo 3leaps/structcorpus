@@ -261,8 +261,12 @@ def gen_late_failure(sizes, limits):
 
 
 def gen_depth(sizes):
-    """N nested flow sequences around one scalar. Format events only: specification 1.3 does not
-    define how load depth is counted, so no limit expectation is recorded."""
+    """N nested flow sequences around one scalar. Format events only.
+
+    Load-depth expectations are not recorded here. Revision 1.4 defines that
+    count, and those rows are emitted by spec14_boundaries.py under their own
+    profile. This ladder stays event-only so existing pins keep their bytes.
+    """
     for n in sizes:
         text = "[" * n + "x" + "]" * n + "\n"
         ev = events(*(["+SEQ []"] * n + ["=VAL :x"] + ["-SEQ"] * n))

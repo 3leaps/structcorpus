@@ -1,0 +1,49 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/spec14_boundaries.py",
+  "profile": "yamlprims-core-entries2",
+  "profile_revision": 1,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.4, sections 5.2, 5.4, 6, and 7.1."
+  },
+  "id": "entry-admission",
+  "parameters": {
+    "set": "entries",
+    "limit_max_input_bytes": 4096,
+    "limit_max_depth": 128,
+    "limit_max_nodes": 64,
+    "limit_max_expanded_nodes": 8,
+    "limit_max_alias_events": 8,
+    "limit_max_owned_bytes": 8192,
+    "limit_max_scalar_bytes": 1024,
+    "limit_max_key_bytes": 1024,
+    "limit_max_mapping_entries": 2,
+    "limit_max_documents": 4,
+    "limit_max_output_bytes": 4096,
+    "limit_max_warnings": 16
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 100,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 6,
+    "input_bytes": 105,
+    "digest": "sha256:b940453356351f0a7615b29adc9c5e5ef7be7eb688b2059be4c01fe14524f356"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Ordinary mapping admission at max_mapping_entries 2. Two distinct keys load. A repeated second key is duplicate_key because capacity is still available. A third key is max_mapping_entries, including when the key repeats. A NaN key is invalid_key at completion, including when the mapping is already at the cap and when the value would not resolve. Other budgets stay above the row."
+  }
+}

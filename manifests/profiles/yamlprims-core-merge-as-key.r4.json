@@ -1,0 +1,28 @@
+{
+  "schema_version": "profile/v1",
+  "id": "yamlprims-core-merge-as-key",
+  "revision": 4,
+  "dialect": "yaml-1.2.2",
+  "scalar_schema": "core",
+  "policy": {
+    "duplicate_keys": "reject",
+    "merge_keys": "plain-key",
+    "integer_range": "i128-u128",
+    "documents": "single",
+    "unknown_tags": "tagged-str",
+    "flow_indentation": "strict"
+  },
+  "cites": [
+    {
+      "title": "yamlprims specification",
+      "url": "https://github.com/3leaps/yamlprims/blob/spec-v1.4/docs/spec/yamlprims-spec.md",
+      "revision": "1.4 (tag spec-v1.4, commit aeca2f5f7832320cc33511cf3faf3c8e56384fbf, sha256 97acb274a18fb9d30a15fe05ce856ce4ba2e169c187ef12db8e824a8a925af0b)"
+    },
+    {
+      "title": "YAML Ain't Markup Language (YAML) version 1.2",
+      "url": "https://yaml.org/spec/1.2.2/",
+      "revision": "1.2.2 (2021-10-01)"
+    }
+  ],
+  "description": "Default options of the yamlprims specification revision 1.4: YAML 1.2.2 Core resolution (section 4), integers limited to i128::MIN..=u128::MAX, explicit core tags directing resolution, non-core tags retained with a raw string inner, duplicate keys rejected (section 5.2), strict flow indentation in every parsing pass (section 9), merge_keys = AsKey (section 5.3), and single-document entrypoints. Error kinds are the specification's snake_case ErrorKind names. Revision 1.4 defines source collection level p and completed height H (1.4/E-1), bytes-only anchor registration (1.4/E-2), and source-validation precedence, capacity-before-duplicate admission, copy-limit order, and completed-key weight (1.4/E-3). Cases bound to this revision use those rules. This file carries no cases; the first boundary rows use explicit-limits profiles that cite the same specification bytes."
+}

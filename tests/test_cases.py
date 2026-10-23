@@ -317,6 +317,43 @@ class TestSpec13(CaseRepo):
                 self.assertNotIn(SPEC_V13_URL, [c["url"] for c in prof["cites"]], name)
 
 
+SPEC_V14_URL = "https://github.com/3leaps/yamlprims/blob/spec-v1.4/docs/spec/yamlprims-spec.md"
+SPEC_V14_COMMIT = "aeca2f5f7832320cc33511cf3faf3c8e56384fbf"
+SPEC_V14_SHA256 = "97acb274a18fb9d30a15fe05ce856ce4ba2e169c187ef12db8e824a8a925af0b"
+SPEC14_PROFILES = {
+    "yamlprims-core.r4.json",
+    "yamlprims-core-merge-apply.r4.json",
+    "yamlprims-core-merge-as-key.r4.json",
+    "yamlprims-core-stream.r4.json",
+    "yamlprims-core-depth128.r1.json",
+    "yamlprims-core-entries2.r1.json",
+}
+SPEC14_LIMIT_PROFILES = {"yamlprims-core-depth128.r1.json", "yamlprims-core-entries2.r1.json"}
+
+
+class TestSpec14(CaseRepo):
+    """Profiles that cite yamlprims specification revision 1.4."""
+
+    def test_named_profiles_cite_the_tagged_bytes(self):
+        seen = set()
+        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
+            with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                prof = json.load(fh)
+            urls = [c["url"] for c in prof["cites"]]
+            if SPEC_V14_URL in urls:
+                seen.add(name)
+                revision = prof["cites"][0]["revision"]
+                self.assertIn(SPEC_V14_COMMIT, revision, name)
+                self.assertIn(SPEC_V14_SHA256, revision, name)
+                if name in SPEC14_LIMIT_PROFILES:
+                    self.assertIn("limits", prof, name)
+                else:
+                    self.assertNotIn("limits", prof, name)
+            else:
+                self.assertNotIn(name, SPEC14_PROFILES, name)
+        self.assertEqual(seen, SPEC14_PROFILES)
+
+
 class TestEventNotations(CaseRepo):
     """Validation of both event notations on a committed record (DDR-0010)."""
 

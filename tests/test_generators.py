@@ -1,5 +1,6 @@
 """Generator self-consistency tests (Python 3.9+ stdlib)."""
 
+import json
 import os
 import struct
 import sys
@@ -12,6 +13,7 @@ sys.path.insert(0, os.path.join(REPO, "tools"))
 import core_goldens  # noqa: E402
 import core_truth  # noqa: E402
 import corpus  # noqa: E402
+import spec14_boundaries  # noqa: E402
 
 
 def value(target, text, plain=True, tag=None):
@@ -107,6 +109,94 @@ class TestTypedConversion(unittest.TestCase):
         # Halfway between 1.0 and the next binary32 value rounds to even (1.0).
         half = 1.0 + 2.0**-24
         self.assertEqual(struct.pack(">f", half).hex(), "3f800000")
+
+
+class TestSpec14Boundaries(unittest.TestCase):
+    """Section 6 and section 5.2 rows, checked against the published arithmetic."""
+
+    def test_limit_fields_match_the_corpus_tool(self):
+        self.assertEqual(spec14_boundaries.LIMIT_FIELDS, corpus.LIMIT_FIELDS)
+
+    def test_spec_table_levels_and_weights(self):
+        self.assertEqual(spec14_boundaries.alias_levels(125), (126, 127))
+        self.assertEqual(spec14_boundaries.alias_levels(126), (127, 128))
+        self.assertEqual(spec14_boundaries.alias_levels(127), (128, 129))
+        text, value = spec14_boundaries.seq_text(128)
+        self.assertEqual(text, ("[" * 128) + "0" + ("]" * 128) + "\n")
+        self.assertEqual(spec14_boundaries.node_count(value), 129)
+        self.assertEqual(spec14_boundaries.logical_weight(value), 64 * 129)
+        text, value = spec14_boundaries.alias_text(126)
+        self.assertTrue(text.startswith("{a: &a [], b: "))
+        self.assertTrue(text.endswith("*a" + ("]" * 126) + "}\n"))
+        # 64 map + 48 entry charges + two 65-byte keys + 64-byte anchor
+        # + 64 bytes for each of k nested sequences and the copy.
+        self.assertEqual(spec14_boundaries.logical_weight(value), 306 + 64 * 127)
+        self.assertEqual(spec14_boundaries.node_count(value), 131)
+
+    def _params(self, profile_name, kind):
+        with open(os.path.join(REPO, "manifests", "profiles", profile_name)) as fh:
+            limits = json.load(fh)["limits"]
+        params = {"set": kind}
+        params.update({("limit_" + name): value for name, value in limits.items()})
+        return params
+
+    def test_depth_and_entry_outcomes(self):
+        depth = {
+            row[0]: row for row in spec14_boundaries.generate(self._params("yamlprims-core-depth128.r1.json", "depth"))
+        }
+        self.assertIn("documents", depth["depth-127"][3])
+        self.assertIn("documents", depth["depth-128"][3])
+        self.assertEqual(depth["depth-129"][3]["error"]["configured"], 128)
+        self.assertNotIn("error", depth["alias-126"][3])
+        self.assertIn("documents", depth["alias-126"][3])
+        self.assertEqual(depth["alias-127"][3]["error"]["limit"], "max_depth")
+        generated = spec14_boundaries.generate(self._params("yamlprims-core-entries2.r1.json", "entries"))
+        entries = {row[0]: row for row in generated}
+        self.assertIn("documents", entries["entries-two"][3])
+        self.assertEqual(entries["entries-duplicate"][3]["error"], {"phase": "structure", "kind": "duplicate_key"})
+        for name in ("entries-third-duplicate", "entries-third-new"):
+            self.assertEqual(
+                entries[name][3]["error"],
+                {"phase": "limit", "kind": "limit_exceeded", "limit": "max_mapping_entries", "configured": 2},
+                name,
+            )
+        invalid = {"phase": "structure", "kind": "invalid_key"}
+        self.assertEqual(entries["entries-nan-at-cap"][2], "{a: 0, b: 0, .nan: 1}\n")
+        self.assertEqual(entries["entries-nan-before-value"][2], "{.nan: !!int nope}\n")
+        self.assertEqual(entries["entries-nan-at-cap"][3]["error"], invalid)
+        self.assertEqual(entries["entries-nan-before-value"][3]["error"], invalid)
+
+    def test_recorded_recipe_digests(self):
+        errors = []
+        recipes = corpus.load_recipes(REPO, errors)
+        self.assertEqual(errors, [])
+        for rel in ("recipes/yaml/depth-boundaries.r1.json", "recipes/yaml/entry-admission.r1.json"):
+            doc = recipes[rel]
+            lines = []
+            in_bytes = 0
+            for _cid, data, _rec, line in corpus._recipe_cases(REPO, rel, doc):
+                lines.append(line)
+                in_bytes += len(data)
+            self.assertEqual(doc["expected"]["cases"], len(lines), rel)
+            self.assertEqual(doc["expected"]["input_bytes"], in_bytes, rel)
+            self.assertEqual(doc["expected"]["digest"], corpus.recipe_digest(lines), rel)
+
+    def test_new_profiles_are_bound_only_by_the_new_recipes(self):
+        errors = []
+        recipes = corpus.load_recipes(REPO, errors)
+        self.assertEqual(errors, [])
+        bound = {}
+        for doc in recipes.values():
+            bound.setdefault((doc["profile"], doc["profile_revision"]), set()).add(doc["id"])
+        self.assertEqual(bound[("yamlprims-core-depth128", 1)], {"depth-boundaries"})
+        self.assertEqual(bound[("yamlprims-core-entries2", 1)], {"entry-admission"})
+        for key in (
+            ("yamlprims-core", 4),
+            ("yamlprims-core-stream", 4),
+            ("yamlprims-core-merge-apply", 4),
+            ("yamlprims-core-merge-as-key", 4),
+        ):
+            self.assertNotIn(key, bound)
 
 
 if __name__ == "__main__":

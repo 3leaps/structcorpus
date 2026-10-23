@@ -23,8 +23,10 @@ Release stages are defined in
 | Non-hazardous adversarial recipes: exact binary64/binary32 rounding thresholds, double-quoted escapes, inline versus aliased merge pairs, tag-heavy trees and tag-wrapper limit boundaries (312 generated cases, provisional) | Implemented |
 | Committed adversarial cases: alias validity, block-scalar chomping and indentation with LF and CRLF, location precision (BOM, multibyte, tab, lone CR, U+2028), diagnostics inputs, the UTF-8 input gate (NUL, invalid UTF-8, UTF-16, UTF-32), and explicit and composite keys (58 cases, provisional) | Implemented |
 | Limit boundaries for alias events, expanded nodes, mapping entries, and nodes under `yamlprims-core-limits` r2, with configured values (DDR-0009) | Implemented, provisional |
-| Stress ladders: alias fan-out, nested fan-out, many keys, late failure, depth (stress tier, hazardous, budgeted); expected errors bound to `yamlprims-core-stress` r1 | Implemented, provisional |
-| Depth limit boundaries | Planned: the specification does not yet define how load depth is counted |
+| Stress ladders: alias fan-out, nested fan-out, many keys, late failure, depth (stress tier, hazardous, budgeted); expected errors bound to `yamlprims-core-stress` r1. The depth ladder stays event-only | Implemented, provisional |
+| yamlprims specification 1.4 policy profiles (`yamlprims-core` r4 and stream, merge-apply, and merge-as-key variants) citing `spec-v1.4`. No cases are bound to those four profiles in this slice (DDR-0011) | Implemented |
+| Depth boundaries at `max_depth` 128 (`S_127`/`S_128`/`S_129` and alias `k` 125/126/127) under `yamlprims-core-depth128` r1, and ordinary-entry admission at `max_mapping_entries` 2 under `yamlprims-core-entries2` r1, including `{a: 0, b: 0, .nan: 1}` and `{.nan: !!int nope}` (DDR-0011) | Implemented, provisional |
+| Remaining specification 1.4 rows: depth 254/255/256, merge height, registration totals, copy-limit ties, completed-key weight, and paired failures that need a source site | Planned |
 | Bounded hydrate / verify for generated recipes (DDR-0004) | Implemented |
 | Containment runner with self-tests (SecDR-0002): bounded execution of a caller-supplied command | Implemented |
 | Running hostile YAML cases through a parser command (`runner.py run`), one container per case with its budgets | Implemented; comparing output with expectations is the consumer driver's job |
