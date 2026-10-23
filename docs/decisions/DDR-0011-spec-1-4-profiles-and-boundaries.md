@@ -1,9 +1,9 @@
 ---
 Record: DDR-0011
 Title: Profile revisions and boundary recipes for yamlprims specification 1.4
-Status: Proposed
+Status: Accepted
 Date: 2026-10-23
-Owner: devlead (drafting); acceptance by the maintainer
+Owner: devlead
 ---
 
 # DDR-0011: Profile revisions and boundary recipes for yamlprims specification 1.4
@@ -82,6 +82,11 @@ profiles.
      `limit_exceeded` / `max_mapping_entries` / configured 2.
      The third-duplicate row repeats `a` and still selects the entry cap,
      which is the capacity-before-identity order.
+     `entries-nan-at-cap` is `{a: 0, b: 0, .nan: 1}` and is `invalid_key`.
+     The mapping is already at the entry cap. Key validity is checked first.
+     `entries-nan-before-value` is `{.nan: !!int nope}` and is `invalid_key`.
+     Its value is not resolved. The case id and the input identify which
+     check fired.
 
    The generator refuses a row whose other load budgets are already over, and
    it refuses an alias row whose source level exceeds `max_depth` before

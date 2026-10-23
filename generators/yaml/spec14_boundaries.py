@@ -11,7 +11,8 @@ Sets (the recipe's "set" parameter):
            ``}`` and one LF.
   entries  ordinary mapping admission at max_mapping_entries 2. Two distinct
            keys succeed. A repeated second key is duplicate_key. A third key
-           is max_mapping_entries, whether or not that key repeats.
+           is max_mapping_entries, whether or not that key repeats. A NaN key
+           is invalid_key at key completion, before capacity and before the value.
 
 Accounting is an independent model of those sections. It is not a YAML parser.
 Each yielded case is (local_id, category, yaml_text, expectation, typed).
@@ -268,6 +269,37 @@ def gen_entries(limits):
         else:
             raise ValueError(outcome)
         yield row, text, expectation
+    for row in gen_nan_keys(limits):
+        yield row
+
+
+def gen_nan_keys(limits):
+    """Section 5.2: a NaN key fails when the key is completed.
+
+    The value is not built, and the 24-byte entry overhead is not charged.
+    Capacity is not consulted. A Float key weighs 64, with no scalar text.
+    """
+    prefix_owned = 64 + 2 * (logical_weight(S("a")) + 64 + 24)
+    rows = (
+        ("entries-nan-at-cap", "{a: 0, b: 0, .nan: 1}\n", 6, prefix_owned + 64, 2, logical_weight(S("a")), 1),
+        ("entries-nan-before-value", "{.nan: !!int nope}\n", 2, 128, 0, 64, 0),
+    )
+    for row, text, nodes, owned, admitted, key_w, scalar in rows:
+        if 64 > limits["max_key_bytes"]:
+            raise ValueError("%s: NaN key weight exceeds max_key_bytes before invalid_key" % row)
+        measures = load_measures(
+            text,
+            depth=1,
+            nodes=nodes,
+            owned=owned,
+            expanded=0,
+            aliases=0,
+            entries=admitted,
+            scalar=scalar,
+            key=key_w,
+        )
+        require_only(limits, measures, None, row)
+        yield row, text, {"error": {"phase": "structure", "kind": "invalid_key"}}
 
 
 def generate(parameters):

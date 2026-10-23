@@ -160,6 +160,11 @@ class TestSpec14Boundaries(unittest.TestCase):
                 {"phase": "limit", "kind": "limit_exceeded", "limit": "max_mapping_entries", "configured": 2},
                 name,
             )
+        invalid = {"phase": "structure", "kind": "invalid_key"}
+        self.assertEqual(entries["entries-nan-at-cap"][2], "{a: 0, b: 0, .nan: 1}\n")
+        self.assertEqual(entries["entries-nan-before-value"][2], "{.nan: !!int nope}\n")
+        self.assertEqual(entries["entries-nan-at-cap"][3]["error"], invalid)
+        self.assertEqual(entries["entries-nan-before-value"][3]["error"], invalid)
 
     def test_recorded_recipe_digests(self):
         errors = []

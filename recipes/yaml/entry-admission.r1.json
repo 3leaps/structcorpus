@@ -37,13 +37,13 @@
     "max_output_bytes": 16777216
   },
   "expected": {
-    "cases": 4,
-    "input_bytes": 64,
-    "digest": "sha256:5a830b8428f65740125bd1c9e301cc08cf8252084f0de9f114f6a6528c50786a"
+    "cases": 6,
+    "input_bytes": 105,
+    "digest": "sha256:b940453356351f0a7615b29adc9c5e5ef7be7eb688b2059be4c01fe14524f356"
   },
   "review": {
     "status": "provisional",
     "author": "devlead",
-    "rationale": "Ordinary mapping admission at max_mapping_entries 2. Two distinct keys load. A repeated second key is duplicate_key because capacity is still available. A third key is max_mapping_entries, including when the key repeats. Key and value nodes are counted before admission. Other budgets stay above the row."
+    "rationale": "Ordinary mapping admission at max_mapping_entries 2. Two distinct keys load. A repeated second key is duplicate_key because capacity is still available. A third key is max_mapping_entries, including when the key repeats. A NaN key is invalid_key at completion, including when the mapping is already at the cap and when the value would not resolve. Other budgets stay above the row."
   }
 }

@@ -38,5 +38,5 @@
       "revision": "1.2.2 (2021-10-01)"
     }
   ],
-  "description": "yamlprims specification revision 1.4, single-document entrypoints, strict flow indentation, merge directives rejected, with explicit limits (sections 5.2 and 7.1). max_mapping_entries is 2. Every other limit is above the four ordinary-entry rows, counting nodes built before admission. Two distinct keys load. A repeated second key is duplicate_key. A third key is max_mapping_entries, including when that key repeats an earlier key."
+  "description": "yamlprims specification revision 1.4, single-document entrypoints, strict flow indentation, merge directives rejected, with explicit limits (sections 5.2 and 7.1). max_mapping_entries is 2. Every other limit is above the ordinary-entry rows, counting nodes built before admission. Two distinct keys load. A repeated second key is duplicate_key. A third key is max_mapping_entries, including when that key repeats an earlier key. A NaN key is invalid_key before capacity and before its value is resolved: {a: 0, b: 0, .nan: 1} and {.nan: !!int nope}."
 }
