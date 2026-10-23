@@ -118,26 +118,59 @@ def _utf16_key(name):
 
 
 def canonical_json(value):
-    """Serialize a metadata-subset value as RFC 8785 (JCS) text (ADR-0002)."""
-    if value is None:
-        return "null"
-    if value is True:
-        return "true"
-    if value is False:
-        return "false"
-    if isinstance(value, int):
-        if not -MAX_SAFE_INT <= value <= MAX_SAFE_INT:
-            raise ValueError("integer outside the interoperable range: %d" % value)
-        return str(value)
-    if isinstance(value, str):
-        value.encode("utf-8")  # raises on lone surrogates
-        return _jcs_string(value)
-    if isinstance(value, list):
-        return "[" + ",".join(canonical_json(v) for v in value) + "]"
-    if isinstance(value, dict):
-        names = sorted(value, key=_utf16_key)
-        return "{" + ",".join(_jcs_string(k) + ":" + canonical_json(value[k]) for k in names) + "}"
-    raise ValueError("value outside the metadata subset: %s" % type(value).__name__)
+    """Serialize a metadata-subset value as RFC 8785 (JCS) text (ADR-0002).
+
+    The walk uses an explicit stack. A success value nested to the configured
+    depth ceiling is deeper than the default call limit. The text is JCS either way.
+    """
+    chunks = []
+    stack = [("val", value)]
+    while stack:
+        kind, item = stack.pop()
+        if kind == "lit":
+            chunks.append(item)
+            continue
+        if item is None:
+            chunks.append("null")
+        elif item is True:
+            chunks.append("true")
+        elif item is False:
+            chunks.append("false")
+        elif isinstance(item, int):
+            if not -MAX_SAFE_INT <= item <= MAX_SAFE_INT:
+                raise ValueError("integer outside the interoperable range: %d" % item)
+            chunks.append(str(item))
+        elif isinstance(item, str):
+            item.encode("utf-8")  # raises on lone surrogates
+            chunks.append(_jcs_string(item))
+        elif isinstance(item, list):
+            chunks.append("[")
+            if not item:
+                chunks.append("]")
+                continue
+            stack.append(("lit", "]"))
+            for index in range(len(item) - 1, 0, -1):
+                stack.append(("val", item[index]))
+                stack.append(("lit", ","))
+            stack.append(("val", item[0]))
+        elif isinstance(item, dict):
+            names = sorted(item, key=_utf16_key)
+            chunks.append("{")
+            if not names:
+                chunks.append("}")
+                continue
+            stack.append(("lit", "}"))
+            for index in range(len(names) - 1, 0, -1):
+                name = names[index]
+                stack.append(("val", item[name]))
+                stack.append(("lit", _jcs_string(name) + ":"))
+                stack.append(("lit", ","))
+            name = names[0]
+            stack.append(("val", item[name]))
+            stack.append(("lit", _jcs_string(name) + ":"))
+        else:
+            raise ValueError("value outside the metadata subset: %s" % type(item).__name__)
+    return "".join(chunks)
 
 
 def path_problems(rel):
