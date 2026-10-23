@@ -31,6 +31,7 @@ and its [normative catalog](https://github.com/3leaps/crucible/blob/fc6c49a3a1dd
 | [DDR-0009](DDR-0009-resource-ladders-and-limit-errors.md) | Resource ladders, configured limit errors, and running hazardous cases | Proposed |
 | [DDR-0010](DDR-0010-structcorpus-event-notation.md) | An opt-in control-escaped event notation, structcorpus-events/1 | Proposed |
 | [DDR-0011](DDR-0011-spec-1-4-profiles-and-boundaries.md) | Profile revisions and boundary recipes for yamlprims specification 1.4 | Accepted |
+| [DDR-0012](DDR-0012-depth-ceiling.md) | Depth ceiling at configured maximum 255 | Accepted |
 | [SecDR-0001](SecDR-0001-public-only-admission.md) | Public-only admission and classification compliance | Proposed |
 | [SecDR-0002](SecDR-0002-bounded-execution-containment.md) | Bounded execution and memory containment for hostile cases | Proposed |
 | [PDR-0001](PDR-0001-staged-releases.md) | Staged releases, each with its own acceptance list | Proposed |
