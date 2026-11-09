@@ -121,6 +121,9 @@ class TestSpec14Boundaries(unittest.TestCase):
         self.assertEqual(spec14_boundaries.alias_levels(125), (126, 127))
         self.assertEqual(spec14_boundaries.alias_levels(126), (127, 128))
         self.assertEqual(spec14_boundaries.alias_levels(127), (128, 129))
+        self.assertEqual(spec14_boundaries.alias_levels(252), (253, 254))
+        self.assertEqual(spec14_boundaries.alias_levels(253), (254, 255))
+        self.assertEqual(spec14_boundaries.alias_levels(254), (255, 256))
         text, value = spec14_boundaries.seq_text(128)
         self.assertEqual(text, ("[" * 128) + "0" + ("]" * 128) + "\n")
         self.assertEqual(spec14_boundaries.node_count(value), 129)
@@ -166,11 +169,34 @@ class TestSpec14Boundaries(unittest.TestCase):
         self.assertEqual(entries["entries-nan-at-cap"][3]["error"], invalid)
         self.assertEqual(entries["entries-nan-before-value"][3]["error"], invalid)
 
+    def test_depth_ceiling_outcomes(self):
+        rows = {
+            row[0]: row
+            for row in spec14_boundaries.generate(self._params("yamlprims-core-depth255.r1.json", "depth255"))
+        }
+        self.assertEqual(set(rows), {"depth-254", "depth-255", "depth-256", "alias-252", "alias-253", "alias-254"})
+        self.assertIn("documents", rows["depth-254"][3])
+        self.assertIn("documents", rows["depth-255"][3])
+        self.assertEqual(rows["depth-256"][2], ("[" * 256) + "0" + ("]" * 256) + "\n")
+        self.assertEqual(
+            rows["depth-256"][3]["error"],
+            {"phase": "limit", "kind": "limit_exceeded", "limit": "max_depth", "configured": 255},
+        )
+        self.assertIn("documents", rows["alias-253"][3])
+        self.assertTrue(rows["alias-254"][2].startswith("{a: &a [], b: "))
+        self.assertTrue(rows["alias-254"][2].endswith("*a" + ("]" * 254) + "}\n"))
+        self.assertEqual(rows["alias-254"][3]["error"]["limit"], "max_depth")
+        self.assertEqual(rows["alias-254"][3]["error"]["configured"], 255)
+
     def test_recorded_recipe_digests(self):
         errors = []
         recipes = corpus.load_recipes(REPO, errors)
         self.assertEqual(errors, [])
-        for rel in ("recipes/yaml/depth-boundaries.r1.json", "recipes/yaml/entry-admission.r1.json"):
+        for rel in (
+            "recipes/yaml/depth-boundaries.r1.json",
+            "recipes/yaml/depth-ceiling.r1.json",
+            "recipes/yaml/entry-admission.r1.json",
+        ):
             doc = recipes[rel]
             lines = []
             in_bytes = 0
@@ -189,6 +215,7 @@ class TestSpec14Boundaries(unittest.TestCase):
         for doc in recipes.values():
             bound.setdefault((doc["profile"], doc["profile_revision"]), set()).add(doc["id"])
         self.assertEqual(bound[("yamlprims-core-depth128", 1)], {"depth-boundaries"})
+        self.assertEqual(bound[("yamlprims-core-depth255", 1)], {"depth-ceiling"})
         self.assertEqual(bound[("yamlprims-core-entries2", 1)], {"entry-admission"})
         for key in (
             ("yamlprims-core", 4),

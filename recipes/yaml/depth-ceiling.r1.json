@@ -1,0 +1,49 @@
+{
+  "schema_version": "recipe/v1",
+  "revision": 1,
+  "format": "yaml",
+  "dialect": "yaml-1.2.2",
+  "generator": "generators/yaml/spec14_boundaries.py",
+  "profile": "yamlprims-core-depth255",
+  "profile_revision": 1,
+  "classifiers": {
+    "sensitivity": "0-public",
+    "access-tier": "public"
+  },
+  "provenance": {
+    "origin": "synthetic",
+    "license": "MIT OR Apache-2.0",
+    "method": "Generated for structcorpus from the published yamlprims specification revision 1.4, sections 5.2, 5.4, 6, and 7.1."
+  },
+  "id": "depth-ceiling",
+  "parameters": {
+    "set": "depth255",
+    "limit_max_input_bytes": 65536,
+    "limit_max_depth": 255,
+    "limit_max_nodes": 512,
+    "limit_max_expanded_nodes": 16,
+    "limit_max_alias_events": 16,
+    "limit_max_owned_bytes": 65536,
+    "limit_max_scalar_bytes": 1024,
+    "limit_max_key_bytes": 1024,
+    "limit_max_mapping_entries": 16,
+    "limit_max_documents": 4,
+    "limit_max_output_bytes": 65536,
+    "limit_max_warnings": 16
+  },
+  "execution": {
+    "tier": "smoke",
+    "max_cases": 100,
+    "max_output_bytes": 16777216
+  },
+  "expected": {
+    "cases": 6,
+    "input_bytes": 3108,
+    "digest": "sha256:c341c1e87b31dd83cf6716ca3e803f2decc54ac8fbda13bf4c39f9a6794598f6"
+  },
+  "review": {
+    "status": "provisional",
+    "author": "devlead",
+    "rationale": "Section 6 rows at max_depth 255, the configured ceiling. S_254(0) and S_255(0) load. S_256(0) fails max_depth at the 256th bracket. Alias k of 252 and 253 load. Alias k of 254 has source level 255 and fails placement at 256. Other budgets stay above the row, including a counted copy. Each input ends with one LF."
+  }
+}

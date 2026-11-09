@@ -53,6 +53,17 @@ class TestCanonicalJson(unittest.TestCase):
         text = corpus.canonical_json({"z": "é", "a": [{"y": 1, "x": 2}]})
         self.assertEqual(corpus.canonical_json(corpus.load_json_strict(text.encode())), text)
 
+    def test_depth_ceiling_value_encodes(self):
+        # One sequence is an object around a one-element array. A few hundred
+        # of those pass the default call limit and still have one JCS form.
+        value = {"t": "int", "v": "0"}
+        for _ in range(300):
+            value = {"t": "seq", "items": [value]}
+        text = corpus.canonical_json(value)
+        self.assertEqual(corpus.load_json_strict(text.encode()), value)
+        self.assertTrue(text.startswith('{"items":[{"items":'))
+        self.assertTrue(text.endswith('{"t":"int","v":"0"}' + ('],"t":"seq"}' * 300)))
+
 
 def stored_json(value):
     """JSON as the repository stores it: UTF-8, with invisible characters written as escapes."""
@@ -326,9 +337,14 @@ SPEC14_PROFILES = {
     "yamlprims-core-merge-as-key.r4.json",
     "yamlprims-core-stream.r4.json",
     "yamlprims-core-depth128.r1.json",
+    "yamlprims-core-depth255.r1.json",
     "yamlprims-core-entries2.r1.json",
 }
-SPEC14_LIMIT_PROFILES = {"yamlprims-core-depth128.r1.json", "yamlprims-core-entries2.r1.json"}
+SPEC14_LIMIT_PROFILES = {
+    "yamlprims-core-depth128.r1.json",
+    "yamlprims-core-depth255.r1.json",
+    "yamlprims-core-entries2.r1.json",
+}
 
 
 class TestSpec14(CaseRepo):

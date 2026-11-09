@@ -9,6 +9,8 @@ Sets (the recipe's "set" parameter):
            at max_depth 128. S_n is n opening brackets, 0, n closing brackets,
            and one LF. The alias input is ``{a: &a [], b:`` plus S_k(*a) plus
            ``}`` and one LF.
+  depth255 the same constructions at the configured ceiling: n = 254, 255, 256
+           and k = 252, 253, 254, with max_depth 255.
   entries  ordinary mapping admission at max_mapping_entries 2. Two distinct
            keys succeed. A repeated second key is duplicate_key. A third key
            is max_mapping_entries, whether or not that key repeats. A NaN key
@@ -153,8 +155,8 @@ def alias_levels(k):
     return (k + 1, k + 2)
 
 
-def gen_depth(limits):
-    for n in (127, 128, 129):
+def gen_depth_rows(limits, depths, aliases):
+    for n in depths:
         text, value = seq_text(n)
         measures = load_measures(
             text,
@@ -176,7 +178,7 @@ def gen_depth(limits):
             expectation = {"documents": [value]}
         yield row, text, expectation
 
-    for k in (125, 126, 127):
+    for k in aliases:
         text, value = alias_text(k)
         source_max, insertion = alias_levels(k)
         if source_max > limits["max_depth"]:
@@ -205,6 +207,17 @@ def gen_depth(limits):
             require_only(limits, measures, None, row)
             expectation = {"documents": [value]}
         yield row, text, expectation
+
+
+def gen_depth(limits):
+    return gen_depth_rows(limits, (127, 128, 129), (125, 126, 127))
+
+
+def gen_depth255(limits):
+    """Section 6 ceiling: levels 254/255/256 at configured max_depth 255."""
+    if limits["max_depth"] != 255:
+        raise ValueError("depth255 rows require max_depth 255, got %s" % limits["max_depth"])
+    return gen_depth_rows(limits, (254, 255, 256), (252, 253, 254))
 
 
 def flow_pairs(pairs):
@@ -307,6 +320,8 @@ def generate(parameters):
     kind = parameters["set"]
     if kind == "depth":
         rows = gen_depth(limits)
+    elif kind == "depth255":
+        rows = gen_depth255(limits)
     elif kind == "entries":
         rows = gen_entries(limits)
     else:
