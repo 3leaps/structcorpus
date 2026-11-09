@@ -18,7 +18,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          # ADR-0002 floor. ubuntu-latest (26.04) has no 3.9 build, so this
+          # job stays on the newest Ubuntu image that still provides one.
+          - runner: ubuntu-24.04
             python: "3.9"
           - runner: ubuntu-latest
             python: "3.14"
