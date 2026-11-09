@@ -74,5 +74,6 @@ revision. Never track `main`.
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
-[MIT license](LICENSE-MIT) at your option. Material imported from public
-upstreams keeps its own license and notices, recorded per case.
+[MIT license](LICENSE-MIT) at your option. See [NOTICE](NOTICE) for project
+name and trademark notices. Material imported from public upstreams keeps
+its own license and notices, recorded per case.
