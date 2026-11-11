@@ -370,6 +370,50 @@ class TestSpec14(CaseRepo):
         self.assertEqual(seen, SPEC14_PROFILES)
 
 
+SPEC_V15_URL = "https://github.com/3leaps/yamlprims/blob/spec-v1.5/docs/spec/yamlprims-spec.md"
+SPEC_V15_COMMIT = "fd7db5722e001770663a820db166d2d26ebf6483"
+SPEC_V15_SHA256 = "cc05c66d5d9940f81703e31f6922781e1d9baf18ebd7bcfea5c8d219728f563a"
+SPEC15_PROFILES = {
+    "yamlprims-core.r5.json",
+    "yamlprims-core-merge-apply.r5.json",
+    "yamlprims-core-merge-as-key.r5.json",
+    "yamlprims-core-stream.r5.json",
+}
+
+
+class TestSpec15(CaseRepo):
+    """Profiles that cite yamlprims specification revision 1.5."""
+
+    def test_named_profiles_cite_the_tagged_bytes(self):
+        seen = set()
+        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
+            with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                prof = json.load(fh)
+            urls = [c["url"] for c in prof["cites"]]
+            if SPEC_V15_URL in urls:
+                seen.add(name)
+                revision = prof["cites"][0]["revision"]
+                self.assertIn(SPEC_V15_COMMIT, revision, name)
+                self.assertIn(SPEC_V15_SHA256, revision, name)
+                self.assertNotIn("limits", prof, name)
+            else:
+                self.assertNotIn(name, SPEC15_PROFILES, name)
+        self.assertEqual(seen, SPEC15_PROFILES)
+
+    def test_r5_policy_matches_r4(self):
+        for name in SPEC15_PROFILES:
+            r4_name = name.replace(".r5.json", ".r4.json")
+            with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                r5 = json.load(fh)
+            with open(os.path.join(self.root, "manifests", "profiles", r4_name)) as fh:
+                r4 = json.load(fh)
+            self.assertEqual(r5["id"], r4["id"])
+            self.assertEqual(r5["revision"], 5)
+            self.assertEqual(r5["dialect"], r4["dialect"])
+            self.assertEqual(r5["scalar_schema"], r4["scalar_schema"])
+            self.assertEqual(r5["policy"], r4["policy"])
+
+
 class TestEventNotations(CaseRepo):
     """Validation of both event notations on a committed record (DDR-0010)."""
 
