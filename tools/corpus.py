@@ -647,8 +647,9 @@ def load_formats(root, errors):
             errors.append("%s: generated_input_extension is declared exactly when recipes are" % where)
         if "fixtures" in entry and "cases" not in entry:
             errors.append("%s: fixtures are declared only with cases" % where)
+        has_ext = "generated_input_extension" in entry
         ext = entry.get("generated_input_extension")
-        if ext is not None and not (isinstance(ext, str) and EXTENSION_RE.match(ext)):
+        if has_ext and not (isinstance(ext, str) and EXTENSION_RE.match(ext)):
             errors.append("%s: generated_input_extension %r is not a suffix like .ext" % (where, ext))
         for kind in INVENTORY_PATHS:
             if kind not in entry:
@@ -668,7 +669,7 @@ def load_formats(root, errors):
             missing = [k for k in impl["inventories"] if k not in entry]
             if missing:
                 errors.append("%s: must declare %s" % (where, ", ".join(missing)))
-            if ext is not None and ext != impl["generated_input_extension"]:
+            if has_ext and ext != impl["generated_input_extension"]:
                 errors.append(
                     "%s: generated_input_extension must be %r for %s" % (where, impl["generated_input_extension"], fmt)
                 )
@@ -1477,13 +1478,32 @@ def cmd_verify(args):
     return 0
 
 
+class ListError(Exception):
+    """The corpus could not be listed completely; .errors holds every loading problem."""
+
+    def __init__(self, errors):
+        super().__init__("; ".join(errors))
+        self.errors = list(errors)
+
+
 def list_entries(root, tier, show_budgets=False):
-    """Recipes and committed cases selected by tier, as plain dicts (stable order)."""
+    """Recipes and committed cases selected by tier, as plain dicts (stable order).
+
+    Raises ListError if the registry, recipes or case shards could not all be loaded, so a
+    partial listing is never reported as complete.
+    """
     allowed = TIER_ORDER[: TIER_ORDER.index(tier) + 1]
     errors = []
     rows = []
     formats = load_formats(root, errors)
-    for rel, doc in sorted(load_recipes(root, errors, formats).items()):
+    recipes = load_recipes(root, errors, formats)
+    statics = list(static_cases(root, formats, errors))
+    for _fmt, where, rec in statics:
+        if not isinstance(rec, dict) or not isinstance(rec.get("execution"), dict):
+            errors.append("%s: not a case record" % where)
+    if errors:
+        raise ListError(errors)
+    for rel, doc in sorted(recipes.items()):
         ex = doc["execution"]
         if ex["tier"] not in allowed:
             continue
@@ -1501,7 +1521,7 @@ def list_entries(root, tier, show_budgets=False):
         if show_budgets:
             row["output_bytes"] = sum(len(d) + len(line) + 1 for _, d, _r, line in _recipe_cases(root, rel, doc))
         rows.append(row)
-    for _fmt, _where, rec in static_cases(root, formats, errors):
+    for _fmt, _where, rec in statics:
         ex = rec["execution"]
         if ex["tier"] not in allowed:
             continue
@@ -1526,7 +1546,13 @@ def list_entries(root, tier, show_budgets=False):
 
 
 def cmd_list(args):
-    rows = list_entries(args.root, args.tier, args.show_budgets)
+    try:
+        rows = list_entries(args.root, args.tier, args.show_budgets)
+    except ListError as exc:
+        for err in exc.errors:
+            print("list: %s" % err, file=sys.stderr)
+        print("list: FAILED (%d problems); no listing written" % len(exc.errors), file=sys.stderr)
+        return 1
     if args.json:
         sys.stdout.write(canonical_json({"tier": args.tier, "entries": rows}) + "\n")
         return 0

@@ -621,6 +621,65 @@ class TestRegistryPaths(LayoutRepo):
             corpus.hydrate(self.root, os.path.join(self.outdir, "h"), "smoke")
         self.assertIn("fixtures/yaml/linked: symbolic links are not allowed", str(ctx.exception))
 
+    def test_null_generated_input_extension(self):
+        self.edit_yaml_entry(lambda e: e.__setitem__("generated_input_extension", None))
+        self.assertRejected("generated_input_extension None is not a suffix like .ext")
+
+    def _list(self, *extra):
+        import contextlib
+        import io
+
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = corpus.main(["list", "--root", self.root, "--tier", "conformance", *extra])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_list_succeeds_on_the_shipped_tree(self):
+        code, out, _err = self._list()
+        self.assertEqual(code, 0)
+        self.assertIn("61366 cases", out)
+
+    def test_list_fails_on_loading_errors(self):
+        def bad_version(doc):
+            doc["schema_version"] = "formats/v9"
+
+        def malformed_shard_line():
+            self.write(SHARD, self.read(SHARD) + b"{not json\n")
+
+        def non_record_shard_line():
+            self.write(SHARD, self.read(SHARD) + b"[]\n")
+
+        def missing_shard():
+            os.remove(self.full(SHARD))
+
+        def registry(fn):
+            def apply():
+                doc = self.registry()
+                fn(doc)
+                self.save_registry(doc)
+
+            return apply
+
+        cases = {
+            "unknown registry version": (registry(bad_version), "unsupported schema_version"),
+            "malformed shard line": (malformed_shard_line, SHARD + ":104"),
+            "non-record shard line": (non_record_shard_line, SHARD + ":104: not a case record"),
+            "missing shard": (missing_shard, SHARD + " is missing"),
+        }
+        for name, (breakit, needle) in cases.items():
+            for mode in ((), ("--json",)):
+                with self.subTest(case=name, mode=mode):
+                    saved = {rel: self.read(rel) for rel in (SHARD, corpus.FORMATS_REL)}
+                    try:
+                        breakit()
+                        code, out, err = self._list(*mode)
+                        self.assertEqual(code, 1, (out, err))
+                        self.assertIn(needle, err)
+                        self.assertEqual(out, "")
+                    finally:
+                        for rel, data in saved.items():
+                            self.write(rel, data)
+
     def test_non_json_file_in_registry_directories(self):
         for top, kind in (("manifests/yaml/profiles", "profile"), ("manifests/yaml/span-conventions", "span")):
             with self.subTest(top=top):
