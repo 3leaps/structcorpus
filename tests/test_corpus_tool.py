@@ -111,6 +111,37 @@ class TestRepositoryRules(RepoCase):
         write(self.root, ".gitattributes", ATTRS.replace(b"/manifests/**/*.jsonl", b"/manifests/*.jsonl"))
         self.assertRejected("/manifests/**/*.jsonl must set -text")
 
+    def test_gitattributes_rules_must_be_active_and_last(self):
+        rule = b" -text -filter -ident -working-tree-encoding"
+        for pattern in (b"/fixtures/**", b"/expected/**", b"/manifests/**/*.jsonl"):
+            others = b"".join(line + b"\n" for line in ATTRS.splitlines()[1:] if not line.startswith(pattern + b" "))
+            variants = {
+                "commented out": others + b"# " + pattern + rule + b"\n",
+                "narrower scope": others + b"/nested" + pattern + rule + b"\n",
+                "same-line override": others + pattern + rule + b" text=auto\n",
+                "same-line eol": others + pattern + rule + b" eol=crlf\n",
+                "later override": ATTRS + b"* text=auto\n",
+                "later unspecify": ATTRS + b"*.jsonl !text\n",
+                "later filter": ATTRS + b"* filter=lfs\n",
+                "later legacy crlf": ATTRS + b"* crlf\n",
+                "macro": b"[attr]conv text eol=crlf\n" + ATTRS,
+            }
+            for name, data in variants.items():
+                with self.subTest(pattern=pattern, variant=name):
+                    write(self.root, ".gitattributes", data)
+                    self.assertNotEqual(self.errors(), [])
+
+    def test_gitattributes_rules_allow_earlier_and_unrelated_lines(self):
+        for data in (
+            b"*.md text eol=lf\n" + ATTRS,
+            ATTRS + b"*.png -diff\n" + b"*.bin -text binary\n",
+            ATTRS.replace(b"-working-tree-encoding\n", b"-working-tree-encoding -diff\n"),
+            ATTRS.replace(b"\n", b"\r\n"),
+        ):
+            with self.subTest(data=data):
+                write(self.root, ".gitattributes", data)
+                self.assertEqual(self.errors(), [])
+
     def test_gitattributes_text_only_is_insufficient(self):
         write(self.root, ".gitattributes", b"/fixtures/** -text\n/expected/** -text\n")
         self.assertRejected("-filter")

@@ -36,6 +36,7 @@ MAX_PATH_CHARS = 200
 BYTE_EXACT_TREES = ("fixtures", "expected")
 BYTE_EXACT_ATTRS = "-text -filter -ident -working-tree-encoding"
 BYTE_EXACT_SHARDS = "/manifests/**/*.jsonl"
+CONVERSION_ATTRS = frozenset({"text", "eol", "crlf", "filter", "ident", "working-tree-encoding"})
 MAX_SAFE_INT = 2**53 - 1
 FORBIDDEN_DIRS = {"unknown", "pending", "quarantine", "staging", "intake"}
 
@@ -322,6 +323,48 @@ def check_inventory_links(root):
     return errors
 
 
+def check_byte_exact_attributes(attrs):
+    """Violations of the byte-exact rules in the root .gitattributes text.
+
+    Each byte-exact pattern needs an active line naming exactly that pattern that unsets
+    every conversion attribute, and nothing on that line or any later line may set or
+    unspecify one of them again; later lines in .gitattributes override earlier ones, so
+    line-ending and filter rules for other paths belong before the byte-exact rules.
+    Macro definitions may not name a conversion attribute.
+    """
+    errors = []
+    required = ["/%s/**" % tree for tree in BYTE_EXACT_TREES] + [BYTE_EXACT_SHARDS]
+    unset = set(BYTE_EXACT_ATTRS.split())
+    rule_line = {}
+    for lineno, line in enumerate(attrs.splitlines(), 1):
+        fields = line.split()
+        if not fields or fields[0].startswith("#"):
+            continue
+        pattern, tokens = fields[0], fields[1:]
+        touches = [t for t in tokens if _attr_name(t) in CONVERSION_ATTRS and not t.startswith("-")]
+        if pattern.startswith("[attr]"):
+            if any(_attr_name(t) in CONVERSION_ATTRS for t in tokens):
+                errors.append(
+                    ".gitattributes:%d: a macro may not set %s" % (lineno, ", ".join(sorted(CONVERSION_ATTRS)))
+                )
+            continue
+        if pattern in required and unset <= set(tokens) and not touches:
+            rule_line.setdefault(pattern, lineno)
+        elif touches and rule_line:
+            errors.append(
+                ".gitattributes:%d: %s sets %s after a byte-exact rule; move it before line %d"
+                % (lineno, pattern, " ".join(touches), min(rule_line.values()))
+            )
+    for pattern in required:
+        if pattern not in rule_line:
+            errors.append(".gitattributes: %s must set %s" % (pattern, BYTE_EXACT_ATTRS))
+    return errors
+
+
+def _attr_name(token):
+    return token.lstrip("-!").split("=", 1)[0]
+
+
 def check_repository(root):
     """Return a list of rule violations under root."""
     errors = []
@@ -332,12 +375,9 @@ def check_repository(root):
             attrs = read_checkout_file(root, ".gitattributes").decode("utf-8")
         except CheckoutPathError as exc:
             errors.append(str(exc))
-    if "%s %s" % (BYTE_EXACT_SHARDS, BYTE_EXACT_ATTRS) not in attrs:
-        errors.append(".gitattributes: %s must set %s" % (BYTE_EXACT_SHARDS, BYTE_EXACT_ATTRS))
+    errors.extend(check_byte_exact_attributes(attrs))
     total = 0
     for tree in BYTE_EXACT_TREES:
-        if "/%s/** %s" % (tree, BYTE_EXACT_ATTRS) not in attrs:
-            errors.append(".gitattributes: /%s/** must set %s" % (tree, BYTE_EXACT_ATTRS))
         top = os.path.join(root, tree)
         if not os.path.isdir(top):
             continue
