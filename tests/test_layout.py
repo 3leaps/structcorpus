@@ -442,6 +442,54 @@ class TestRegistryPaths(LayoutRepo):
         os.symlink(outside, self.full(rel))
         self.assertRejected(rel + ": not a regular file")
 
+    def _link_outside(self, rel, is_dir):
+        """Move rel outside the repo copy and leave a link to it, keeping its valid content."""
+        outside = os.path.join(self._tmp.name, "outside-" + rel.replace("/", "_"))
+        shutil.move(self.full(rel), outside)
+        os.symlink(outside, self.full(rel), target_is_directory=is_dir)
+
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "symlinks unavailable")
+    def test_referenced_generator_symlink(self):
+        rel = "generators/yaml/resource_ladders.py"
+        self._link_outside(rel, False)
+        errs = self.errors()
+        self.assertRejected(rel + ": symbolic links are not allowed", errs)
+        self.assertRejected("generator %r is missing or misplaced" % rel, errs)
+        with self.assertRaises(corpus.HydrateError) as ctx:
+            corpus._load_generator(self.root, rel)
+        self.assertIn("no linked component", str(ctx.exception))
+
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "symlinks unavailable")
+    def test_added_directory_symlinks(self):
+        for top in ("generators/yaml", "fixtures/yaml", "recipes/yaml", "manifests/yaml/profiles"):
+            with self.subTest(top=top):
+                target = os.path.join(self._tmp.name, "dir-" + top.replace("/", "_"))
+                os.makedirs(target, exist_ok=True)
+                link = self.full(top + "/linked")
+                os.symlink(target, link, target_is_directory=True)
+                self.assertRejected(top + "/linked: symbolic links are not allowed")
+                os.remove(link)
+
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "symlinks unavailable")
+    def test_referenced_fixture_through_linked_directory(self):
+        # Move a real fixture subtree out and link it back: the final file is
+        # regular, but an intermediate component is a link.
+        rec = next(c for c in self.cases() if "path" in c["input"])
+        fixture = rec["input"]["path"]
+        parent = fixture.rsplit("/", 1)[0]
+        nested = parent + "/nested"
+        os.makedirs(self.full(nested))
+        name = fixture.rsplit("/", 1)[1]
+        shutil.move(self.full(fixture), self.full(nested + "/" + name))
+        rec2 = dict(rec, input=dict(rec["input"], path=nested + "/" + name))
+        cases = [rec2 if c["id"] == rec["id"] else c for c in self.cases()]
+        self.save_cases(cases)
+        self.assertEqual(self.errors(), [])  # control: the nested real directory is fine
+        self._link_outside(nested, True)
+        errs = self.errors()
+        self.assertRejected(nested + ": symbolic links are not allowed", errs)
+        self.assertRejected("input %s/%s is missing" % (nested, name), errs)
+
     def test_non_json_file_in_registry_directories(self):
         for top, kind in (("manifests/yaml/profiles", "profile"), ("manifests/yaml/span-conventions", "span")):
             with self.subTest(top=top):

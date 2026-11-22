@@ -198,6 +198,60 @@ def _walk_files(top):
             yield os.path.join(dirpath, name)
 
 
+def _regular_without_links(root, rel):
+    """True when every component of rel under root is a real (non-link) entry and rel is a regular file."""
+    current = root
+    parts = rel.split("/")
+    for i, part in enumerate(parts):
+        current = os.path.join(current, part)
+        try:
+            st = os.lstat(current)
+        except OSError:
+            return False
+        if stat.S_ISLNK(st.st_mode):
+            return False
+        if i < len(parts) - 1 and not stat.S_ISDIR(st.st_mode):
+            return False
+    return stat.S_ISREG(st.st_mode)
+
+
+INVENTORY_TREES = ("manifests", "fixtures", "recipes", "generators")
+
+
+def check_inventory_links(root):
+    """Reject symbolic links and non-regular files anywhere in the corpus inventory trees.
+
+    Directories are inspected without following links, so neither an admitted input nor an
+    executed generator can resolve outside the checkout through a linked file or directory.
+    """
+    errors = []
+    for tree in INVENTORY_TREES:
+        top = os.path.join(root, tree)
+        try:
+            st = os.lstat(top)
+        except OSError:
+            continue
+        if stat.S_ISLNK(st.st_mode):
+            errors.append("%s: symbolic links are not allowed" % tree)
+            continue
+        for dirpath, dirnames, filenames in os.walk(top, followlinks=False):
+            dirnames.sort()
+            kept = []
+            for name in dirnames + sorted(filenames):
+                full = os.path.join(dirpath, name)
+                rel = os.path.relpath(full, root).replace(os.sep, "/")
+                st = os.lstat(full)
+                if stat.S_ISLNK(st.st_mode):
+                    errors.append("%s: symbolic links are not allowed" % rel)
+                elif name in dirnames:
+                    if name != "__pycache__":
+                        kept.append(name)
+                elif not stat.S_ISREG(st.st_mode):
+                    errors.append("%s: not a regular file" % rel)
+            dirnames[:] = kept
+    return errors
+
+
 def check_repository(root):
     """Return a list of rule violations under root."""
     errors = []
@@ -708,7 +762,7 @@ def check_case(root, rec, profiles, spans, errors, where):
             errors.append("%s: unsafe or misplaced input path %r" % (where, rel))
         else:
             full = os.path.join(root, *rel.split("/"))
-            if os.path.islink(full) or not os.path.isfile(full):
+            if not _regular_without_links(root, rel):
                 errors.append("%s: input %s is missing" % (where, rel))
             else:
                 with open(full, "rb") as fh:
@@ -971,6 +1025,8 @@ def check_manifests(root):
 
 
 def _load_generator(root, rel):
+    if path_problems(rel) or not _regular_without_links(root, rel):
+        raise HydrateError("%s: generator must be a regular file inside the checkout with no linked component" % rel)
     path = os.path.join(root, *rel.split("/"))
     spec = importlib.util.spec_from_file_location("structcorpus_gen_" + os.path.basename(rel)[:-3], path)
     module = importlib.util.module_from_spec(spec)
@@ -1058,7 +1114,7 @@ def check_recipe(root, rel, doc, profiles, errors):
         not isinstance(gen, str)
         or not gen.startswith("generators/%s/" % doc.get("format"))
         or path_problems(gen)
-        or not os.path.isfile(os.path.join(root, *gen.split("/")))
+        or not _regular_without_links(root, gen)
     ):
         errors.append("%s: generator %r is missing or misplaced" % (rel, gen))
     ex = doc.get("execution") if isinstance(doc.get("execution"), dict) else {}
@@ -1451,7 +1507,13 @@ def check_recipes(root):
 
 def check_all(root):
     """Every `validate` check, each distinct problem reported once."""
-    errors = check_repository(root) + check_layout(root) + check_manifests(root) + check_recipes(root)
+    errors = (
+        check_inventory_links(root)
+        + check_repository(root)
+        + check_layout(root)
+        + check_manifests(root)
+        + check_recipes(root)
+    )
     return list(dict.fromkeys(errors))
 
 
