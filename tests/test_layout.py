@@ -490,6 +490,63 @@ class TestRegistryPaths(LayoutRepo):
         self.assertRejected(nested + ": symbolic links are not allowed", errs)
         self.assertRejected("input %s/%s is missing" % (nested, name), errs)
 
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "symlinks unavailable")
+    def test_cache_directory_descendants_are_inspected(self):
+        for top in ("generators/yaml/__pycache__", "fixtures/yaml/__pycache__"):
+            with self.subTest(top=top):
+                os.makedirs(self.full(top), exist_ok=True)
+                target = os.path.join(self._tmp.name, "external.bin")
+                with open(target, "wb") as fh:
+                    fh.write(b"x")
+                os.symlink(target, self.full(top + "/linked.pyc"))
+                os.symlink(self._tmp.name, self.full(top + "/linked-dir"), target_is_directory=True)
+                errs = self.errors()
+                self.assertRejected(top + "/linked.pyc: symbolic links are not allowed", errs)
+                self.assertRejected(top + "/linked-dir: symbolic links are not allowed", errs)
+                shutil.rmtree(self.full(top))
+
+    @unittest.skipIf(not hasattr(os, "mkfifo") or os.name == "nt", "fifos unavailable")
+    def test_fifo_in_cache_directory(self):
+        top = "generators/yaml/__pycache__"
+        os.makedirs(self.full(top), exist_ok=True)
+        os.mkfifo(self.full(top + "/pipe"))
+        self.assertRejected(top + "/pipe: not a regular file")
+
+    def test_generator_runs_from_source_not_cached_bytecode(self):
+        # Valid, timestamp-matching bytecode for different code must never run.
+        rel = "generators/yaml/resource_ladders.py"
+        src = self.full(rel)
+        evil_src = os.path.join(self._tmp.name, "evil.py")
+        st = os.stat(src)
+        body = b"MARKER = 'bytecode'\n"
+        with open(evil_src, "wb") as fh:
+            # Same size and mtime as the real source, so the bytecode header matches it.
+            fh.write(body + b"#" * (st.st_size - len(body) - 1) + b"\n")
+        os.utime(evil_src, (st.st_atime, st.st_mtime))
+        import importlib.util
+        import py_compile
+
+        cache = importlib.util.cache_from_source(src)
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        py_compile.compile(evil_src, cfile=cache, doraise=True)
+        module = corpus._load_generator(self.root, rel)
+        self.assertFalse(hasattr(module, "MARKER"), "cached bytecode was executed instead of the source")
+        self.assertTrue(callable(getattr(module, "generate", None)) or len(vars(module)) > 3)
+
+    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "needs non-root POSIX")
+    def test_unreadable_inventory_directory(self):
+        for top, stray in (("generators/yaml/nested", "unused.py"), ("fixtures/yaml/nested", "unreferenced.yaml")):
+            with self.subTest(top=top):
+                self.write(top + "/" + stray, "x\n")
+                errs = self.errors()  # control: readable, the stray file is reported
+                self.assertTrue(any(stray in e for e in errs), errs)
+                os.chmod(self.full(top), 0)
+                try:
+                    self.assertRejected(top + ": cannot read directory", self.errors())
+                finally:
+                    os.chmod(self.full(top), 0o755)
+                shutil.rmtree(self.full(top))
+
     def test_non_json_file_in_registry_directories(self):
         for top, kind in (("manifests/yaml/profiles", "profile"), ("manifests/yaml/span-conventions", "span")):
             with self.subTest(top=top):

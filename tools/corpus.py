@@ -18,13 +18,13 @@ the checks here are the admission gate a consumer can run with python3 alone.
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 import re
 import stat
 import sys
 import tempfile
+import types
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -191,8 +191,20 @@ def path_problems(rel):
     return problems
 
 
-def _walk_files(top):
-    for dirpath, dirnames, filenames in os.walk(top):
+def _walk_errors(root, errors):
+    """An os.walk onerror handler that records an unreadable directory as a validation error."""
+
+    def onerror(exc):
+        where = getattr(exc, "filename", None) or "?"
+        rel = os.path.relpath(where, root).replace(os.sep, "/") if where != "?" else where
+        errors.append("%s: cannot read directory (%s)" % (rel, exc.strerror or exc))
+
+    return onerror
+
+
+def _walk_files(top, root, errors):
+    """Yield files under top in sorted order; an unreadable directory is an error, never a silent skip."""
+    for dirpath, dirnames, filenames in os.walk(top, onerror=_walk_errors(root, errors)):
         dirnames.sort()
         for name in sorted(filenames):
             yield os.path.join(dirpath, name)
@@ -234,7 +246,7 @@ def check_inventory_links(root):
         if stat.S_ISLNK(st.st_mode):
             errors.append("%s: symbolic links are not allowed" % tree)
             continue
-        for dirpath, dirnames, filenames in os.walk(top, followlinks=False):
+        for dirpath, dirnames, filenames in os.walk(top, followlinks=False, onerror=_walk_errors(root, errors)):
             dirnames.sort()
             kept = []
             for name in dirnames + sorted(filenames):
@@ -244,8 +256,9 @@ def check_inventory_links(root):
                 if stat.S_ISLNK(st.st_mode):
                     errors.append("%s: symbolic links are not allowed" % rel)
                 elif name in dirnames:
-                    if name != "__pycache__":
-                        kept.append(name)
+                    # Cache directories are inspected like any other: generators are compiled
+                    # from their checked source, but nothing linked may sit in the inventory.
+                    kept.append(name)
                 elif not stat.S_ISREG(st.st_mode):
                     errors.append("%s: not a regular file" % rel)
             dirnames[:] = kept
@@ -267,7 +280,7 @@ def check_repository(root):
         top = os.path.join(root, tree)
         if not os.path.isdir(top):
             continue
-        for path in _walk_files(top):
+        for path in _walk_files(top, root, errors):
             rel = os.path.relpath(path, root).replace(os.sep, "/")
             if os.path.basename(rel) in (".gitkeep", "README.md"):
                 continue
@@ -290,7 +303,7 @@ def check_repository(root):
         top = os.path.join(root, tree)
         if not os.path.isdir(top):
             continue
-        for path in _walk_files(top):
+        for path in _walk_files(top, root, errors):
             rel = os.path.relpath(path, root).replace(os.sep, "/")
             if not (rel.endswith(".json") or rel.endswith(".jsonl")):
                 continue
@@ -325,7 +338,7 @@ def check_invisible_text(root):
     for tree in TEXT_TREES:
         top = os.path.join(root, tree)
         if os.path.isdir(top):
-            paths.extend(_walk_files(top))
+            paths.extend(_walk_files(top, root, errors))
     for path in paths:
         if not os.path.isfile(path) or "__pycache__" in os.path.relpath(path, root).split(os.sep):
             continue
@@ -1010,7 +1023,7 @@ def check_manifests(root):
             if isinstance(rec, dict) and isinstance(rec.get("input"), dict) and "path" in rec["input"]:
                 referenced.add(rec["input"]["path"])
         if "fixtures" in entry:
-            for full in _walk_files(os.path.join(root, *entry["fixtures"].split("/"))):
+            for full in _walk_files(os.path.join(root, *entry["fixtures"].split("/")), root, errors):
                 frel = os.path.relpath(full, root).replace(os.sep, "/")
                 if os.path.basename(frel) in (".gitkeep", "README.md"):
                     continue
@@ -1028,9 +1041,13 @@ def _load_generator(root, rel):
     if path_problems(rel) or not _regular_without_links(root, rel):
         raise HydrateError("%s: generator must be a regular file inside the checkout with no linked component" % rel)
     path = os.path.join(root, *rel.split("/"))
-    spec = importlib.util.spec_from_file_location("structcorpus_gen_" + os.path.basename(rel)[:-3], path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Compile the checked source bytes directly: no import machinery, so no cached
+    # bytecode (__pycache__) is ever executed in place of the source.
+    with open(path, "rb") as fh:
+        source = fh.read()
+    module = types.ModuleType("structcorpus_gen_" + os.path.basename(rel)[:-3])
+    module.__file__ = path
+    exec(compile(source, path, "exec", dont_inherit=True), module.__dict__)  # noqa: S102 - reviewed corpus generator
     return module
 
 
@@ -1493,7 +1510,7 @@ def check_recipes(root):
             if doc["format"] == fmt:
                 check_recipe(root, rel, doc, profiles, errors)
                 used.add(doc.get("generator"))
-        for full in _walk_files(os.path.join(root, *entry["generators"].split("/"))):
+        for full in _walk_files(os.path.join(root, *entry["generators"].split("/")), root, errors):
             grel = os.path.relpath(full, root).replace(os.sep, "/")
             if "__pycache__" not in grel.split("/") and grel not in used:
                 errors.append("%s: generator not referenced by any recipe" % grel)
