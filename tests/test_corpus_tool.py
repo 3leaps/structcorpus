@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
 
@@ -95,7 +96,7 @@ def git_protects(data):
     """Whether real git leaves every protected path with all conversion attributes unset."""
     with tempfile.TemporaryDirectory() as tmp:
         env = isolated_git_env(tmp)
-        subprocess.run([GIT, "init", "-q", tmp], env=env, check=True)
+        subprocess.run([GIT, "init", "-q", "--template=", tmp], env=env, check=True)
         with open(os.path.join(tmp, ".gitattributes"), "wb") as fh:
             fh.write(data)
         out = subprocess.run(
@@ -224,6 +225,17 @@ class TestRepositoryRules(RepoCase):
         self.assertEqual(env["XDG_CONFIG_HOME"], "/tmp/x")
         if GIT:
             self.assertFalse(git_protects(b""))
+
+    @unittest.skipUnless(GIT, "needs git")
+    def test_git_oracle_ignores_templates(self):
+        with tempfile.TemporaryDirectory() as template:
+            os.makedirs(os.path.join(template, "info"))
+            with open(os.path.join(template, "info", "attributes"), "wb") as fh:
+                fh.write(b"* -text -filter -ident -working-tree-encoding\n")
+            real = isolated_git_env
+            polluted = lambda tmp: dict(real(tmp), GIT_TEMPLATE_DIR=template)  # noqa: E731
+            with mock.patch(__name__ + ".isolated_git_env", polluted):
+                self.assertFalse(git_protects(b""))
 
     @unittest.skipUnless(GIT, "needs git")
     def test_shipped_gitattributes_protect_under_git(self):
