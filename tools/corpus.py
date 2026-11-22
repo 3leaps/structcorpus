@@ -35,6 +35,7 @@ MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
 MAX_PATH_CHARS = 200
 BYTE_EXACT_TREES = ("fixtures", "expected")
 BYTE_EXACT_ATTRS = "-text -filter -ident -working-tree-encoding"
+BYTE_EXACT_SHARDS = "/manifests/**/*.jsonl"
 MAX_SAFE_INT = 2**53 - 1
 FORBIDDEN_DIRS = {"unknown", "pending", "quarantine", "staging", "intake"}
 
@@ -331,6 +332,8 @@ def check_repository(root):
             attrs = read_checkout_file(root, ".gitattributes").decode("utf-8")
         except CheckoutPathError as exc:
             errors.append(str(exc))
+    if "%s %s" % (BYTE_EXACT_SHARDS, BYTE_EXACT_ATTRS) not in attrs:
+        errors.append(".gitattributes: %s must set %s" % (BYTE_EXACT_SHARDS, BYTE_EXACT_ATTRS))
     total = 0
     for tree in BYTE_EXACT_TREES:
         if "/%s/** %s" % (tree, BYTE_EXACT_ATTRS) not in attrs:

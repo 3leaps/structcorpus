@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -88,6 +89,21 @@ class TestShippedLayout(LayoutRepo):
         for kind, pattern in corpus.INVENTORY_PATHS.items():
             self.assertEqual(formats["yaml"][kind], pattern.format("yaml"))
         self.assertEqual(formats["yaml"]["generated_input_extension"], ".yaml")
+
+    @unittest.skipUnless(shutil.which("git") and os.path.isdir(os.path.join(REPO, ".git")), "needs a git checkout")
+    def test_shards_and_aggregate_check_out_byte_exact(self):
+        errors = []
+        formats = corpus.load_formats(REPO, errors)
+        self.assertEqual(errors, [])
+        paths = [corpus.AGGREGATE_REL] + sorted(f["cases"] for f in formats.values() if f.get("cases"))
+        out = subprocess.run(
+            ["git", "-C", REPO, "check-attr", "text", "filter", "ident", "working-tree-encoding", "--"] + paths,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.decode("utf-8")
+        got = {tuple(line.rsplit(": ", 2)) for line in out.splitlines()}
+        want = {(p, a, "unset") for p in paths for a in ("text", "filter", "ident", "working-tree-encoding")}
+        self.assertEqual(got, want)
 
     def test_aggregate_equals_regenerated_concatenation(self):
         errors = []
