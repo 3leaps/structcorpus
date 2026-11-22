@@ -33,6 +33,7 @@ and its [normative catalog](https://github.com/3leaps/crucible/blob/fc6c49a3a1dd
 | [DDR-0011](DDR-0011-spec-1-4-profiles-and-boundaries.md) | Profile revisions and boundary recipes for yamlprims specification 1.4 | Accepted |
 | [DDR-0012](DDR-0012-depth-ceiling.md) | Depth ceiling at configured maximum 255 | Accepted |
 | [DDR-0013](DDR-0013-spec-1-5-profiles.md) | Profile revisions for yamlprims specification 1.5 | Proposed |
+| [DDR-0014](DDR-0014-per-format-manifest-layout.md) | Per-format manifest layout and the format registry | Proposed |
 | [SecDR-0001](SecDR-0001-public-only-admission.md) | Public-only admission and classification compliance | Proposed |
 | [SecDR-0002](SecDR-0002-bounded-execution-containment.md) | Bounded execution and memory containment for hostile cases | Proposed |
 | [PDR-0001](PDR-0001-staged-releases.md) | Staged releases, each with its own acceptance list | Proposed |
