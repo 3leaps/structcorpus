@@ -345,8 +345,9 @@ def check_byte_exact_attributes(data):
     required = ["/%s/**" % tree for tree in BYTE_EXACT_TREES] + [BYTE_EXACT_SHARDS]
     unset = set(BYTE_EXACT_ATTRS.split())
     rule_line = {}
-    for lineno, raw in enumerate(data.split(b"\n"), 1):
-        if raw.endswith(b"\r"):
+    lines = data.split(b"\n")
+    for lineno, raw in enumerate(lines, 1):
+        if raw.endswith(b"\r") and lineno < len(lines):
             raw = raw[:-1]
         where = ".gitattributes:%d" % lineno
         if len(raw) > ATTR_MAX_LINE:

@@ -72,15 +72,29 @@ def attribute_variants():
                 ("same-line eol", base + pattern + RULE + b" eol=crlf\n", False),
                 ("later legacy crlf", ATTRS + b"* crlf\n", False),
                 ("reserved name", base + pattern + RULE + b" builtin_objectmode\n", False),
+                ("rule ends in bare cr at eof", base + pattern + RULE + b"\r", False),
+                ("comment ends in bare cr at eof", ATTRS + b"# end\r", False),
             )
         )
+
+
+def isolated_git_env(tmp):
+    """An environment that keeps host Git configuration and attribute files out of the oracle."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(
+        HOME=tmp,
+        XDG_CONFIG_HOME=tmp,
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_CONFIG_GLOBAL=os.devnull,
+        GIT_ATTR_NOSYSTEM="1",
+    )
+    return env
 
 
 def git_protects(data):
     """Whether real git leaves every protected path with all conversion attributes unset."""
     with tempfile.TemporaryDirectory() as tmp:
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-        env.update(HOME=tmp, XDG_CONFIG_HOME=tmp, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+        env = isolated_git_env(tmp)
         subprocess.run([GIT, "init", "-q", tmp], env=env, check=True)
         with open(os.path.join(tmp, ".gitattributes"), "wb") as fh:
             fh.write(data)
@@ -201,6 +215,15 @@ class TestRepositoryRules(RepoCase):
                 self.assertEqual(self.errors(), [])
                 if GIT:
                     self.assertTrue(git_protects(data))
+
+    def test_git_oracle_is_isolated(self):
+        env = isolated_git_env("/tmp/x")
+        for key, value in (("GIT_ATTR_NOSYSTEM", "1"), ("GIT_CONFIG_NOSYSTEM", "1"), ("GIT_CONFIG_GLOBAL", os.devnull)):
+            self.assertEqual(env.get(key), value)
+        self.assertEqual(env["HOME"], "/tmp/x")
+        self.assertEqual(env["XDG_CONFIG_HOME"], "/tmp/x")
+        if GIT:
+            self.assertFalse(git_protects(b""))
 
     @unittest.skipUnless(GIT, "needs git")
     def test_shipped_gitattributes_protect_under_git(self):
