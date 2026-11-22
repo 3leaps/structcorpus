@@ -1,0 +1,15 @@
+{
+  "schema_version": "formats/v1",
+  "formats": {
+    "yaml": {
+      "status": "active",
+      "dialects": ["yaml-1.2.2"],
+      "generated_input_extension": ".yaml",
+      "cases": "manifests/yaml/cases.jsonl",
+      "fixtures": "fixtures/yaml",
+      "recipes": "recipes/yaml",
+      "generators": "generators/yaml",
+      "aliases": "manifests/yaml/aliases"
+    }
+  }
+}

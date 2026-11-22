@@ -6,3 +6,6 @@
 # still the control that holds; attributes can be overridden locally.
 /fixtures/** -text -filter -ident -working-tree-encoding
 /expected/** -text -filter -ident -working-tree-encoding
+
+# Case shards and the static-case aggregate are compared byte for byte.
+/manifests/**/*.jsonl -text -filter -ident -working-tree-encoding

@@ -32,6 +32,7 @@ writes a small driver that runs its own API against a pinned corpus release.
 
 ```sh
 python3 tools/corpus.py validate          # repository, metadata, and case rules
+python3 tools/corpus.py aggregate         # regenerate manifests/cases.jsonl from the format shards
 python3 tools/corpus.py hydrate --tier conformance --output /tmp/structcorpus-out
 python3 tools/corpus.py verify --root /tmp/structcorpus-out
 python3 tools/corpus.py canon FILE.json   # canonical (JCS) form of a metadata file
@@ -52,9 +53,15 @@ its generator, parameters, case count, and a digest of the exact output
 ([DDR-0004](docs/decisions/DDR-0004-recipes-and-hydration.md)). Hydration
 writes only to a new directory outside the checkout.
 
-Cases live in `manifests/cases.jsonl` and reference inputs under
-`fixtures/yaml/`. Profiles are in `manifests/profiles/` and span conventions
-in `manifests/span-conventions/`; the record formats are defined in
+Each format's registries live under `manifests/<format>/`, and
+`manifests/formats.json` declares their paths
+([DDR-0014](docs/decisions/DDR-0014-per-format-manifest-layout.md)). YAML
+cases live in `manifests/yaml/cases.jsonl` and reference inputs under
+`fixtures/yaml/`. Profiles are in `manifests/yaml/profiles/`, and span
+conventions are in `manifests/yaml/span-conventions/`. `manifests/cases.jsonl`
+is the generated index of every format's static cases; regenerate it with
+`python3 tools/corpus.py aggregate` after editing a shard. The record formats
+are defined in
 [DDR-0003](docs/decisions/DDR-0003-case-record-and-value-notation.md) and
 `schemas/`.
 

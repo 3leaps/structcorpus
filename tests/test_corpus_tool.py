@@ -1,6 +1,7 @@
 """Tests for tools/corpus.py (standard library unittest; Python 3.9+)."""
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ ATTRS = (
     b"* text=auto\n"
     b"/fixtures/** -text -filter -ident -working-tree-encoding\n"
     b"/expected/** -text -filter -ident -working-tree-encoding\n"
+    b"/manifests/**/*.jsonl -text -filter -ident -working-tree-encoding\n"
 )
 
 
@@ -105,6 +107,10 @@ class TestRepositoryRules(RepoCase):
         write(self.root, ".gitattributes", b"* text=auto\n")
         self.assertRejected("must set -text")
 
+    def test_missing_shard_gitattributes_rule(self):
+        write(self.root, ".gitattributes", ATTRS.replace(b"/manifests/**/*.jsonl", b"/manifests/*.jsonl"))
+        self.assertRejected("/manifests/**/*.jsonl must set -text")
+
     def test_gitattributes_text_only_is_insufficient(self):
         write(self.root, ".gitattributes", b"/fixtures/** -text\n/expected/** -text\n")
         self.assertRejected("-filter")
@@ -132,6 +138,10 @@ class TestRepositoryRules(RepoCase):
         self.assertRejected("symbolic links")
 
     def test_cli_exit_codes(self):
+        for sub in ("manifests", "fixtures", "recipes", "generators"):
+            shutil.copytree(
+                os.path.join(REPO, sub), os.path.join(self.root, sub), ignore=shutil.ignore_patterns("__pycache__")
+            )
         self.assertEqual(corpus.main(["validate", "--root", self.root]), 0)
         write(self.root, "fixtures/yaml/Bad.yaml", b"x")
         self.assertEqual(corpus.main(["validate", "--root", self.root]), 1)

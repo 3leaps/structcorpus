@@ -205,7 +205,7 @@ class TestTagTrees(unittest.TestCase):
 
     def test_limits_rows_bracket_profile(self):
         doc = recipe("tag-trees-limits.r1.json")
-        with open(os.path.join(REPO, "manifests", "profiles", "yamlprims-core-limits.r1.json")) as fh:
+        with open(os.path.join(REPO, "manifests", "yaml", "profiles", "yamlprims-core-limits.r1.json")) as fh:
             limits = json.load(fh)["limits"]
         self.assertEqual(doc["parameters"]["max_nodes"], limits["max_nodes"])
         self.assertEqual(doc["parameters"]["max_owned_bytes"], limits["max_owned_bytes"])
@@ -239,7 +239,7 @@ class TestResourceBoundaries(unittest.TestCase):
 
     def setUp(self):
         self.rows = {r[0]: r for r in rows(rl, "resource-boundaries.r1.json")}
-        with open(os.path.join(REPO, "manifests", "profiles", "yamlprims-core-limits.r2.json")) as fh:
+        with open(os.path.join(REPO, "manifests", "yaml", "profiles", "yamlprims-core-limits.r2.json")) as fh:
             self.limits = json.load(fh)["limits"]
 
     def test_alias_events_by_hand(self):
@@ -313,7 +313,7 @@ class TestStressLadders(unittest.TestCase):
                 continue
             doc = recipe(name)
             prof = "%s.r%d.json" % (doc["profile"], doc["profile_revision"])
-            with open(os.path.join(REPO, "manifests", "profiles", prof)) as fh:
+            with open(os.path.join(REPO, "manifests", "yaml", "profiles", prof)) as fh:
                 limits = json.load(fh).get("limits")
             for row in rl.generate(doc["parameters"]):
                 if row[3] is None:

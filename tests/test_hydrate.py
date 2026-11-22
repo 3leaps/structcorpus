@@ -31,7 +31,8 @@ class RecipeRepo(unittest.TestCase):
         self.root = os.path.join(self._tmp.name, "repo")
         self.outdir = os.path.join(self._tmp.name, "out")
         os.makedirs(self.outdir)
-        shutil.copytree(os.path.join(REPO, "manifests", "profiles"), os.path.join(self.root, "manifests", "profiles"))
+        for sub in ("manifests", "fixtures"):
+            shutil.copytree(os.path.join(REPO, sub), os.path.join(self.root, sub))
         os.makedirs(os.path.join(self.root, "generators", "yaml"))
         os.makedirs(os.path.join(self.root, "recipes", "yaml"))
         with open(os.path.join(self.root, "generators", "yaml", "tiny.py"), "w") as fh:

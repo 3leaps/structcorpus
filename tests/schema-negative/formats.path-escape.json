@@ -1,0 +1,10 @@
+{
+  "schema_version": "formats/v1",
+  "formats": {
+    "yaml": {
+      "status": "active",
+      "dialects": ["yaml-1.2.2"],
+      "cases": "manifests/yaml/../../outside/cases.jsonl"
+    }
+  }
+}

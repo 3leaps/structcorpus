@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(REPO, "tools"))
 
 import corpus  # noqa: E402
 
-LIMITS_PROFILE = "manifests/profiles/yamlprims-core-limits.r1.json"
+LIMITS_PROFILE = "manifests/yaml/profiles/yamlprims-core-limits.r1.json"
 
 
 class TestProfileLimits(unittest.TestCase):

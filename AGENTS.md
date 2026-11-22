@@ -42,8 +42,11 @@ make prepush      # before pushing or marking a PR final: check + containment se
 - Maintainer tooling is goneat with ruff, yamllint, yamlfmt, shfmt, actionlint,
   and checkmake (PDR-0002). CI runs it in a digest-pinned runner image.
 
-- After editing a fixture, recompute its `sha256` and `bytes` in
-  `manifests/cases.jsonl`. Never edit a fixture to match an expectation.
+- After editing a fixture, recompute its `sha256` and `bytes` in its
+  format's case shard (`manifests/yaml/cases.jsonl`), then run
+  `make aggregate`. Never edit a fixture to match an expectation.
+- `manifests/formats.json` declares every format's registry paths
+  (DDR-0014). Never hand-edit `manifests/cases.jsonl`; it is generated.
 - New cases start `provisional`. Only a reviewer distinct from the author
   marks one `reviewed`.
 

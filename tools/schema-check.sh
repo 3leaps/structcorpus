@@ -22,19 +22,26 @@ check() { # check <schema> <data> <expect: pass|fail>
 
 status=0
 n=0
-while IFS= read -r line || [ -n "$line" ]; do
-  [ -z "$line" ] && continue
-  n=$((n + 1))
-  printf '%s\n' "$line" >"$work/case-$n.json"
-  check case.v1.schema.json "$work/case-$n.json" pass || status=1
-done <"$root/manifests/cases.jsonl"
-for f in "$root"/manifests/profiles/*.json; do
+# Registry paths are fixed per format (DDR-0014); corpus.py validate rejects any
+# other layout, so these globs see every registered shard and registry file.
+check formats.v1.schema.json "$root/manifests/formats.json" pass || status=1
+for shard in "$root"/manifests/*/cases.jsonl; do
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -z "$line" ] && continue
+    n=$((n + 1))
+    printf '%s\n' "$line" >"$work/case-$n.json"
+    check case.v1.schema.json "$work/case-$n.json" pass || status=1
+  done <"$shard"
+done
+for f in "$root"/manifests/*/profiles/*.json; do
   check profile.v1.schema.json "$f" pass || status=1
 done
-for f in "$root"/manifests/span-conventions/*.json; do
+for f in "$root"/manifests/*/span-conventions/*.json; do
   check span-convention.v1.schema.json "$f" pass || status=1
 done
-check upstreams-lock.v1.schema.json "$root/manifests/upstreams.lock.json" pass || status=1
+for f in "$root"/manifests/*/upstreams.lock.json; do
+  check upstreams-lock.v1.schema.json "$f" pass || status=1
+done
 for f in "$root"/recipes/*/*.json; do
   check recipe.v1.schema.json "$f" pass || status=1
 done

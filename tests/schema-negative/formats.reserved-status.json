@@ -1,0 +1,10 @@
+{
+  "schema_version": "formats/v1",
+  "formats": {
+    "json": {
+      "status": "reserved",
+      "dialects": ["rfc8259"],
+      "cases": "manifests/json/cases.jsonl"
+    }
+  }
+}

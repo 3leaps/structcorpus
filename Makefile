@@ -1,6 +1,6 @@
 # structcorpus developer targets. Tooling: python3 (3.9+) for the corpus;
 # goneat for format, lint, and JSON Schema checks.
-.PHONY: all help check prepush stress-selftest test validate schemas hydrate fmt fmt-check lint clean
+.PHONY: all help check prepush stress-selftest test validate aggregate schemas hydrate fmt fmt-check lint clean
 
 PYTHON ?= python3
 GONEAT ?= goneat
@@ -20,8 +20,11 @@ stress-selftest: ## Prove container limits are enforced; fails fast if the runti
 test: ## Run the corpus-tool unit tests
 	$(PYTHON) -m unittest discover -s tests
 
-validate: ## Check repository, metadata, case, and recipe rules
+validate: ## Check repository, metadata, case, and recipe rules (never writes)
 	$(PYTHON) tools/corpus.py validate
+
+aggregate: ## Regenerate manifests/cases.jsonl from the per-format case shards
+	$(PYTHON) tools/corpus.py aggregate
 
 schemas: ## Meta-validate schemas, then validate metadata and negative controls
 	$(GONEAT) schema validate-schema --schema-id json-schema-draft-07 schemas/*.json
