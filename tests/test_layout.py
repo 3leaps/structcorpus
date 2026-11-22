@@ -344,7 +344,7 @@ class TestRegistryContract(LayoutRepo):
     def test_missing_registry(self):
         os.unlink(self.full(corpus.FORMATS_REL))
         errs = self.errors()
-        self.assertRejected("manifests/formats.json: [Errno 2]", errs)
+        self.assertRejected("manifests/formats.json: not a regular file (missing", errs)
         self.assertRejected("manifests/yaml: not a format directory declared by an active format", errs)
 
     def test_status_is_closed(self):
@@ -546,6 +546,80 @@ class TestRegistryPaths(LayoutRepo):
                 finally:
                     os.chmod(self.full(top), 0o755)
                 shutil.rmtree(self.full(top))
+
+    @unittest.skipIf(not corpus._DIRFD_OPEN, "descriptor-relative opens unavailable")
+    def test_read_json_refuses_linked_parent_directory(self):
+        # A linked parent whose target holds a regular, valid registry must not be read.
+        outside = os.path.join(self._tmp.name, "manifests-elsewhere")
+        shutil.move(self.full("manifests"), outside)
+        os.symlink(outside, self.full("manifests"), target_is_directory=True)
+        errs = []
+        self.assertIsNone(corpus._read_json(self.root, corpus.FORMATS_REL, errs))
+        self.assertTrue(any(e.startswith("manifests/formats.json: not a regular file") for e in errs), errs)
+
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "symlinks unavailable")
+    def test_readers_refuse_final_component_links(self):
+        target = os.path.join(self._tmp.name, "outside.txt")
+        with open(target, "wb") as fh:
+            fh.write(b"outside\n")
+        shutil.copy(os.path.join(REPO, "README.md"), self.full("README.md"))
+        os.remove(self.full("README.md"))
+        os.symlink(target, self.full("README.md"))
+        self.assertRejected("README.md: not a regular file", corpus.check_invisible_text(self.root))
+        shard_link = self.full(SHARD)
+        shutil.move(shard_link, os.path.join(self._tmp.name, "shard.jsonl"))
+        os.symlink(os.path.join(self._tmp.name, "shard.jsonl"), shard_link)
+        errs = []
+        self.assertIsNone(corpus._read_shard(self.root, SHARD, errs))
+        self.assertTrue(any(e.startswith(SHARD + ": not a regular file") for e in errs), errs)
+        with self.assertRaises(corpus.CheckoutPathError):
+            corpus.read_checkout_file(self.root, "README.md")
+
+    @unittest.skipIf(not hasattr(os, "mkfifo") or os.name == "nt", "fifos unavailable")
+    def test_reader_refuses_fifo_without_blocking(self):
+        os.mkfifo(self.full("manifests/yaml/profiles/pipe.r1.json"))
+        done = []
+
+        def run():
+            try:
+                corpus.read_checkout_file(self.root, "manifests/yaml/profiles/pipe.r1.json")
+            except corpus.CheckoutPathError:
+                done.append("refused")
+
+        import threading
+
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        t.join(10)
+        self.assertEqual(done, ["refused"], "reader blocked on or accepted a FIFO")
+
+    @unittest.skipIf(not corpus._DIRFD_OPEN, "descriptor-relative opens unavailable")
+    def test_link_swapped_in_during_read_is_not_followed(self):
+        rel = "manifests/yaml/upstreams.lock.json"
+        outside = os.path.join(self._tmp.name, "yaml-elsewhere")
+        real_open = os.open
+        calls = []
+
+        def swapping_open(path, flags, *args, **kwargs):
+            fd = real_open(path, flags, *args, **kwargs)
+            calls.append(path)
+            if path == "manifests":  # the check has passed; now swap a later component for a link
+                shutil.copytree(self.full("manifests/yaml"), outside)
+                shutil.rmtree(self.full("manifests/yaml"))
+                os.symlink(outside, self.full("manifests/yaml"), target_is_directory=True)
+            return fd
+
+        with mock.patch.object(corpus.os, "open", swapping_open):
+            with self.assertRaises(corpus.CheckoutPathError):
+                corpus.read_checkout_file(self.root, rel)
+        self.assertIn("manifests", calls)
+
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "symlinks unavailable")
+    def test_hydrate_refuses_linked_inventory(self):
+        os.symlink(self._tmp.name, self.full("fixtures/yaml/linked"), target_is_directory=True)
+        with self.assertRaises(corpus.HydrateError) as ctx:
+            corpus.hydrate(self.root, os.path.join(self.outdir, "h"), "smoke")
+        self.assertIn("fixtures/yaml/linked: symbolic links are not allowed", str(ctx.exception))
 
     def test_non_json_file_in_registry_directories(self):
         for top, kind in (("manifests/yaml/profiles", "profile"), ("manifests/yaml/span-conventions", "span")):

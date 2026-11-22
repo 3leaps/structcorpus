@@ -227,6 +227,62 @@ def _regular_without_links(root, rel):
     return stat.S_ISREG(st.st_mode)
 
 
+class CheckoutPathError(OSError):
+    """A checkout path that is missing, linked, or not a regular file."""
+
+
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
+_O_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
+# Descriptor-relative opens exist on POSIX; elsewhere (Windows) fall back to lstat checks.
+_DIRFD_OPEN = bool(_O_NOFOLLOW and _O_DIRECTORY) and os.open in os.supports_dir_fd
+
+
+def read_checkout_file(root, rel):
+    """Return the bytes of the regular file root/rel, never through a link.
+
+    On POSIX every component is opened relative to its parent's descriptor with O_NOFOLLOW,
+    and the file is fstat()ed and read through the descriptor that was opened, so a link in
+    any component, or one swapped in after a check, fails instead of being followed. Raises
+    CheckoutPathError.
+    """
+    parts = rel.split("/")
+    if any(p in ("", ".", "..") for p in parts):
+        raise CheckoutPathError("%s: unsafe path" % rel)
+    if not _DIRFD_OPEN:
+        if not _regular_without_links(root, rel):
+            raise CheckoutPathError("%s: not a regular file (missing, linked, or special)" % rel)
+        with open(os.path.join(root, *parts), "rb") as fh:
+            return fh.read()
+    try:
+        dfd = os.open(root, os.O_RDONLY | _O_DIRECTORY)
+    except OSError as exc:
+        raise CheckoutPathError("%s: cannot open checkout root (%s)" % (rel, exc.strerror)) from exc
+    try:
+        for part in parts[:-1]:
+            nfd = os.open(part, os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW, dir_fd=dfd)
+            os.close(dfd)
+            dfd = nfd
+        ffd = os.open(parts[-1], os.O_RDONLY | _O_NOFOLLOW | _O_NONBLOCK, dir_fd=dfd)
+    except OSError as exc:
+        raise CheckoutPathError(
+            "%s: not a regular file (missing, linked, or special: %s)" % (rel, exc.strerror)
+        ) from exc
+    finally:
+        os.close(dfd)
+    try:
+        if not stat.S_ISREG(os.fstat(ffd).st_mode):
+            raise CheckoutPathError("%s: not a regular file (missing, linked, or special)" % rel)
+        chunks = []
+        while True:
+            chunk = os.read(ffd, 1 << 20)
+            if not chunk:
+                return b"".join(chunks)
+            chunks.append(chunk)
+    finally:
+        os.close(ffd)
+
+
 INVENTORY_TREES = ("manifests", "fixtures", "recipes", "generators")
 
 
@@ -270,9 +326,11 @@ def check_repository(root):
     errors = []
     attrs_path = os.path.join(root, ".gitattributes")
     attrs = ""
-    if os.path.exists(attrs_path):
-        with open(attrs_path, "rb") as fh:
-            attrs = fh.read().decode("utf-8")
+    if os.path.lexists(attrs_path):
+        try:
+            attrs = read_checkout_file(root, ".gitattributes").decode("utf-8")
+        except CheckoutPathError as exc:
+            errors.append(str(exc))
     total = 0
     for tree in BYTE_EXACT_TREES:
         if "/%s/** %s" % (tree, BYTE_EXACT_ATTRS) not in attrs:
@@ -307,8 +365,11 @@ def check_repository(root):
             rel = os.path.relpath(path, root).replace(os.sep, "/")
             if not (rel.endswith(".json") or rel.endswith(".jsonl")):
                 continue
-            with open(path, "rb") as fh:
-                data = fh.read()
+            try:
+                data = read_checkout_file(root, rel)
+            except CheckoutPathError as exc:
+                errors.append(str(exc))
+                continue
             chunks = data.splitlines() if rel.endswith(".jsonl") else [data]
             for lineno, chunk in enumerate(chunks, 1):
                 if not chunk.strip():
@@ -340,11 +401,14 @@ def check_invisible_text(root):
         if os.path.isdir(top):
             paths.extend(_walk_files(top, root, errors))
     for path in paths:
-        if not os.path.isfile(path) or "__pycache__" in os.path.relpath(path, root).split(os.sep):
+        if not os.path.lexists(path) or "__pycache__" in os.path.relpath(path, root).split(os.sep):
             continue
         rel = os.path.relpath(path, root).replace(os.sep, "/")
-        with open(path, "rb") as fh:
-            data = fh.read()
+        try:
+            data = read_checkout_file(root, rel)
+        except CheckoutPathError as exc:
+            errors.append(str(exc))
+            continue
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
@@ -425,23 +489,14 @@ TYPED_TARGETS = {
 def _read_json(root, rel, errors):
     """Read a JSON object record from a regular file inside the checkout.
 
-    A symlink or other non-regular file, unparseable JSON, or a document that is not an
-    object (including null, arrays and strings) is an error; the caller gets None.
+    The file is read with read_checkout_file (no link in any component); unparseable JSON
+    or a document that is not an object (including null, arrays and strings) is an error.
+    The caller gets None after an error is recorded.
     """
-    full = os.path.join(root, *rel.split("/"))
     try:
-        st = os.lstat(full)
-    except OSError as exc:
-        errors.append("%s: %s" % (rel, exc))
-        return None
-    if not stat.S_ISREG(st.st_mode):
-        errors.append("%s: not a regular file" % rel)
-        return None
-    try:
-        with open(full, "rb") as fh:
-            doc = load_json_strict(fh.read())
+        doc = load_json_strict(read_checkout_file(root, rel))
     except (OSError, ValueError) as exc:
-        errors.append("%s: %s" % (rel, exc))
+        errors.append(str(exc) if isinstance(exc, CheckoutPathError) else "%s: %s" % (rel, exc))
         return None
     if not isinstance(doc, dict):
         errors.append("%s: not a JSON object" % rel)
@@ -671,10 +726,9 @@ def check_layout(root):
 def _read_shard(root, rel, errors):
     """A case shard's bytes. A non-empty shard of LF-terminated lines; returns None if unusable."""
     try:
-        with open(os.path.join(root, *rel.split("/")), "rb") as fh:
-            data = fh.read()
+        data = read_checkout_file(root, rel)
     except OSError as exc:
-        errors.append("%s: %s" % (rel, exc))
+        errors.append(str(exc) if isinstance(exc, CheckoutPathError) else "%s: %s" % (rel, exc))
         return None
     if not data.strip():
         errors.append("%s: case shard has no records" % rel)
@@ -704,11 +758,10 @@ def check_aggregate(root, formats):
     expected = build_aggregate(root, formats, errors)
     if errors:
         return errors
-    path = os.path.join(root, *AGGREGATE_REL.split("/"))
-    if os.path.islink(path) or not os.path.isfile(path):
+    try:
+        actual = read_checkout_file(root, AGGREGATE_REL)
+    except CheckoutPathError:
         return ["%s: aggregate is missing; run `python3 tools/corpus.py aggregate`" % AGGREGATE_REL]
-    with open(path, "rb") as fh:
-        actual = fh.read()
     if actual != expected:
         got, want = actual.split(b"\n"), expected.split(b"\n")
         line = next((i for i, (g, w) in enumerate(zip(got, want), 1) if g != w), min(len(got), len(want)))
@@ -774,12 +827,11 @@ def check_case(root, rec, profiles, spans, errors, where):
         if not isinstance(rel, str) or not rel.startswith("fixtures/%s/" % rec.get("format")) or path_problems(rel):
             errors.append("%s: unsafe or misplaced input path %r" % (where, rel))
         else:
-            full = os.path.join(root, *rel.split("/"))
-            if not _regular_without_links(root, rel):
+            try:
+                data = read_checkout_file(root, rel)
+            except CheckoutPathError:
                 errors.append("%s: input %s is missing" % (where, rel))
             else:
-                with open(full, "rb") as fh:
-                    data = fh.read()
                 if hashlib.sha256(data).hexdigest() != inp.get("sha256") or len(data) != inp.get("bytes"):
                     errors.append("%s: input %s does not match recorded sha256/bytes" % (where, rel))
     exp = rec["expectations"] if isinstance(rec["expectations"], dict) else {}
@@ -1041,10 +1093,14 @@ def _load_generator(root, rel):
     if path_problems(rel) or not _regular_without_links(root, rel):
         raise HydrateError("%s: generator must be a regular file inside the checkout with no linked component" % rel)
     path = os.path.join(root, *rel.split("/"))
-    # Compile the checked source bytes directly: no import machinery, so no cached
-    # bytecode (__pycache__) is ever executed in place of the source.
-    with open(path, "rb") as fh:
-        source = fh.read()
+    # Compile the source bytes read through the checked descriptor: no import machinery, so
+    # no cached bytecode (__pycache__) runs, and no link can be swapped in after the check.
+    try:
+        source = read_checkout_file(root, rel)
+    except CheckoutPathError as exc:
+        raise HydrateError(
+            "%s: generator must be a regular file inside the checkout with no linked component" % rel
+        ) from exc
     module = types.ModuleType("structcorpus_gen_" + os.path.basename(rel)[:-3])
     module.__file__ = path
     exec(compile(source, path, "exec", dont_inherit=True), module.__dict__)  # noqa: S102 - reviewed corpus generator
@@ -1248,7 +1304,10 @@ def recipe_digest(case_lines):
 
 def hydrate(root, out, tier, recipe_filter=None):
     """Write every selected recipe's inputs and manifest into out. Returns a summary dict."""
-    errors = []
+    # Refuse a checkout with links or special files in its inventory before reading anything.
+    errors = check_inventory_links(root)
+    if errors:
+        raise HydrateError("; ".join(errors))
     formats = load_formats(root, errors)
     recipes = load_recipes(root, errors, formats)
     profiles = {fmt: load_profiles(root, formats[fmt], errors) for fmt in formats}
@@ -1546,9 +1605,11 @@ def write_aggregate(root):
         return ["%s: is a symbolic link" % AGGREGATE_REL], 0, False
     records = sum(1 for line in data.split(b"\n") if line.strip())
     if os.path.isfile(path):
-        with open(path, "rb") as fh:
-            if fh.read() == data:
+        try:
+            if read_checkout_file(root, AGGREGATE_REL) == data:
                 return [], records, False
+        except CheckoutPathError as exc:
+            return [str(exc)], 0, False
     mode = (os.stat(path).st_mode & 0o777) if os.path.isfile(path) else 0o644
     fd, tmp = tempfile.mkstemp(prefix=".cases-", dir=os.path.dirname(path))
     try:
