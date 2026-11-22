@@ -7,6 +7,8 @@ Subcommands:
   canon      Print a JSON file in canonical form (JCS over the ADR-0002 subset).
   hydrate    Generate recipe inputs into an output root outside the checkout.
   verify     Re-check a hydrated root's inputs, manifest, and recipe digests.
+  aggregate  Regenerate manifests/cases.jsonl from the per-format case shards
+             (DDR-0014); validate only checks it and never writes.
 
 Full JSON Schema validation runs separately in CI with an external validator;
 the checks here are the admission gate a consumer can run with python3 alone.
@@ -308,6 +310,7 @@ SUPPORTED = {
     "upstreams": "upstreams-lock/v1",
     "recipe": "recipe/v1",
     "hydrated": "hydrated/v1",
+    "formats": "formats/v1",
 }
 TIER_CAPS = {"smoke": 16 * 1024 * 1024, "conformance": 128 * 1024 * 1024, "stress": 256 * 1024 * 1024}
 TIER_ORDER = ("smoke", "conformance", "stress")
@@ -360,14 +363,15 @@ def _read_json(root, rel, errors):
         return None
 
 
-def _load_registry(root, sub, kind, errors):
-    """Load versioned records from manifests/<sub>/<id>.r<N>.json."""
+def _load_registry(root, top_rel, kind, errors):
+    """Load versioned records from <top_rel>/<id>.r<N>.json (a directory declared in the format registry)."""
     out = {}
-    top = os.path.join(root, "manifests", sub)
+    top = os.path.join(root, *top_rel.split("/"))
     if not os.path.isdir(top):
+        errors.append("%s: declared registry directory is missing" % top_rel)
         return out
     for name in sorted(os.listdir(top)):
-        rel = "manifests/%s/%s" % (sub, name)
+        rel = "%s/%s" % (top_rel, name)
         doc = _read_json(root, rel, errors)
         if not isinstance(doc, dict):
             continue
@@ -380,6 +384,281 @@ def _load_registry(root, sub, kind, errors):
             continue
         out[(doc["id"], doc["revision"])] = doc
     return out
+
+
+# ---- format registry (DDR-0014) ------------------------------------------------
+
+FORMATS_REL = "manifests/formats.json"
+AGGREGATE_REL = "manifests/cases.jsonl"
+FORMAT_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+DIALECT_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,63}$")
+EXTENSION_RE = re.compile(r"^\.[a-z0-9]{1,15}$")
+# Each inventory a format may declare, and the one repository path it may use.
+INVENTORY_PATHS = {
+    "cases": "manifests/{0}/cases.jsonl",
+    "profiles": "manifests/{0}/profiles",
+    "span_conventions": "manifests/{0}/span-conventions",
+    "upstreams": "manifests/{0}/upstreams.lock.json",
+    "fixtures": "fixtures/{0}",
+    "recipes": "recipes/{0}",
+    "generators": "generators/{0}",
+}
+INVENTORY_FILES = ("cases", "upstreams")
+FORMAT_MEMBERS = ("status", "dialects", "generated_input_extension") + tuple(INVENTORY_PATHS)
+# Formats this tool implements: the dialects its format-specific checks support, the
+# inventories the format must declare, and the suffix of its hydrated generated inputs.
+# A registry entry for any other format is refused, even when it says active.
+IMPLEMENTED_FORMATS = {
+    "yaml": {
+        "dialects": ("yaml-1.2.2",),
+        "inventories": tuple(INVENTORY_PATHS),
+        "generated_input_extension": ".yaml",
+    },
+}
+
+
+def _registry_path_problem(root, rel, kind, fmt):
+    """Why a declared registry path is unusable, or None."""
+    if not isinstance(rel, str):
+        return "path must be a string"
+    parts = rel.split("/")
+    if (
+        rel.startswith("/")
+        or "\\" in rel
+        or ":" in rel
+        or any(p in ("", ".", "..") for p in parts)
+        or path_problems(rel)
+    ):
+        return "%r is not a normalized repository-relative path" % rel
+    if rel == AGGREGATE_REL:
+        return "%s is the root aggregate and cannot also be a format shard" % rel
+    if rel == FORMATS_REL:
+        return "%s is the format registry itself" % rel
+    current = root
+    for part in parts:
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            return "%s is a symbolic link" % os.path.relpath(current, root).replace(os.sep, "/")
+    if not _inside(current, root):
+        return "%s resolves outside the repository" % rel
+    if kind in INVENTORY_FILES and not os.path.isfile(current):
+        return "%s is missing (expected a file)" % rel
+    if kind not in INVENTORY_FILES and not os.path.isdir(current):
+        return "%s is missing (expected a directory)" % rel
+    expected = INVENTORY_PATHS[kind].format(fmt)
+    if rel != expected:
+        return "must be %s, not %s" % (expected, rel)
+    return None
+
+
+def load_formats(root, errors):
+    """Read and check the format registry. Returns {format: entry} for usable, implemented formats.
+
+    Every problem is appended to errors; an entry with any problem is left out of the result.
+    """
+    doc = _read_json(root, FORMATS_REL, errors)
+    if doc is None:
+        return {}
+    if not isinstance(doc, dict):
+        errors.append("%s: registry is not an object" % FORMATS_REL)
+        return {}
+    unknown = sorted(set(doc) - {"schema_version", "formats"})
+    if unknown:
+        errors.append("%s: unknown member(s) %s" % (FORMATS_REL, ", ".join(unknown)))
+    if doc.get("schema_version") != SUPPORTED["formats"]:
+        errors.append("%s: unsupported schema_version %r" % (FORMATS_REL, doc.get("schema_version")))
+        return {}
+    formats = doc.get("formats")
+    if not isinstance(formats, dict) or not formats:
+        errors.append("%s: formats must be a non-empty object" % FORMATS_REL)
+        return {}
+    usable = {}
+    owners = []
+    for fmt in sorted(formats):
+        entry = formats[fmt]
+        where = "%s: %s" % (FORMATS_REL, fmt)
+        before = len(errors)
+        if not isinstance(fmt, str) or not FORMAT_ID_RE.match(fmt):
+            errors.append("%s: invalid format id" % where)
+            continue
+        if not isinstance(entry, dict):
+            errors.append("%s: entry is not an object" % where)
+            continue
+        unknown = sorted(set(entry) - set(FORMAT_MEMBERS))
+        if unknown:
+            errors.append("%s: unknown member(s) %s" % (where, ", ".join(unknown)))
+        if entry.get("status") != "active":
+            errors.append('%s: status must be "active", not %r' % (where, entry.get("status")))
+        dialects = entry.get("dialects")
+        if (
+            not isinstance(dialects, list)
+            or not dialects
+            or not all(isinstance(d, str) and DIALECT_RE.match(d) for d in dialects)
+            or len(set(dialects)) != len(dialects)
+        ):
+            errors.append("%s: dialects must be a non-empty list of distinct dialect names" % where)
+            dialects = []
+        if "cases" not in entry and "recipes" not in entry:
+            errors.append("%s: declares neither cases nor recipes" % where)
+        if ("recipes" in entry) != ("generators" in entry):
+            errors.append("%s: recipes and generators are declared together" % where)
+        if ("recipes" in entry) != ("generated_input_extension" in entry):
+            errors.append("%s: generated_input_extension is declared exactly when recipes are" % where)
+        if "fixtures" in entry and "cases" not in entry:
+            errors.append("%s: fixtures are declared only with cases" % where)
+        ext = entry.get("generated_input_extension")
+        if ext is not None and not (isinstance(ext, str) and EXTENSION_RE.match(ext)):
+            errors.append("%s: generated_input_extension %r is not a suffix like .ext" % (where, ext))
+        for kind in INVENTORY_PATHS:
+            if kind not in entry:
+                continue
+            problem = _registry_path_problem(root, entry[kind], kind, fmt)
+            if problem:
+                errors.append("%s.%s: %s" % (where, kind, problem))
+            if isinstance(entry[kind], str):
+                owners.append((entry[kind], fmt, kind))
+        impl = IMPLEMENTED_FORMATS.get(fmt)
+        if impl is None:
+            errors.append("%s: format is not implemented by this tool; an active entry does not enable it" % where)
+        else:
+            for d in dialects:
+                if d not in impl["dialects"]:
+                    errors.append("%s: dialect %r is not implemented for %s" % (where, d, fmt))
+            missing = [k for k in impl["inventories"] if k not in entry]
+            if missing:
+                errors.append("%s: must declare %s" % (where, ", ".join(missing)))
+            if ext is not None and ext != impl["generated_input_extension"]:
+                errors.append(
+                    "%s: generated_input_extension must be %r for %s" % (where, impl["generated_input_extension"], fmt)
+                )
+        if len(errors) == before:
+            usable[fmt] = entry
+    for i, (a, fa, ka) in enumerate(owners):
+        for b, fb, kb in owners[i + 1 :]:
+            if a == b or a.startswith(b + "/") or b.startswith(a + "/"):
+                errors.append("%s: %s.%s (%s) overlaps %s.%s (%s)" % (FORMATS_REL, fa, ka, a, fb, kb, b))
+                usable.pop(fa, None)
+                usable.pop(fb, None)
+    return usable
+
+
+def check_layout(root):
+    """The registry is valid, and every format directory and manifest path is one it declares."""
+    errors = []
+    formats = load_formats(root, errors)
+    for tree, kind in (("fixtures", "fixtures"), ("recipes", "recipes"), ("generators", "generators")):
+        top = os.path.join(root, tree)
+        if not os.path.isdir(top):
+            continue
+        for name in sorted(os.listdir(top)):
+            rel = "%s/%s" % (tree, name)
+            if name not in formats or formats[name].get(kind) != rel:
+                errors.append("%s: not a %s directory declared by an active format in %s" % (rel, kind, FORMATS_REL))
+    top = os.path.join(root, "manifests")
+    names = sorted(os.listdir(top)) if os.path.isdir(top) else []
+    for name in names:
+        rel = "manifests/" + name
+        if rel in (FORMATS_REL, AGGREGATE_REL):
+            continue
+        full = os.path.join(top, name)
+        if name not in formats or os.path.islink(full) or not os.path.isdir(full):
+            errors.append("%s: not a format directory declared by an active format in %s" % (rel, FORMATS_REL))
+            continue
+        declared = {formats[name][k] for k in INVENTORY_PATHS if k in formats[name]}
+        for child in sorted(os.listdir(full)):
+            if "%s/%s" % (rel, child) not in declared:
+                errors.append("%s/%s: not declared by %s for %s" % (rel, child, FORMATS_REL, name))
+    if not os.path.isfile(os.path.join(root, *AGGREGATE_REL.split("/"))) or os.path.islink(
+        os.path.join(root, *AGGREGATE_REL.split("/"))
+    ):
+        errors.append("%s: aggregate is missing; run `python3 tools/corpus.py aggregate`" % AGGREGATE_REL)
+    for fmt in sorted(formats):
+        for kind in INVENTORY_PATHS:
+            rel = formats[fmt].get(kind)
+            if rel is None or kind in INVENTORY_FILES:
+                continue
+            if not [n for n in os.listdir(os.path.join(root, *rel.split("/"))) if n != "__pycache__"]:
+                errors.append("%s: %s declares %s, but it is empty" % (rel, fmt, kind))
+    return errors
+
+
+def _read_shard(root, rel, errors):
+    """A case shard's bytes. A non-empty shard of LF-terminated lines; returns None if unusable."""
+    try:
+        with open(os.path.join(root, *rel.split("/")), "rb") as fh:
+            data = fh.read()
+    except OSError as exc:
+        errors.append("%s: %s" % (rel, exc))
+        return None
+    if not data.strip():
+        errors.append("%s: case shard has no records" % rel)
+        return None
+    if not data.endswith(b"\n") or b"\r" in data:
+        errors.append("%s: case shard lines must each end with LF" % rel)
+        return None
+    return data
+
+
+def build_aggregate(root, formats, errors):
+    """The root static-case aggregate: each format's shard bytes, in sorted format-id order."""
+    chunks = []
+    for fmt in sorted(formats):
+        rel = formats[fmt].get("cases")
+        if rel is None:
+            continue
+        data = _read_shard(root, rel, errors)
+        if data is not None:
+            chunks.append(data)
+    return b"".join(chunks)
+
+
+def check_aggregate(root, formats):
+    """The committed aggregate must equal the regenerated one byte for byte."""
+    errors = []
+    expected = build_aggregate(root, formats, errors)
+    if errors:
+        return errors
+    path = os.path.join(root, *AGGREGATE_REL.split("/"))
+    if os.path.islink(path) or not os.path.isfile(path):
+        return ["%s: aggregate is missing; run `python3 tools/corpus.py aggregate`" % AGGREGATE_REL]
+    with open(path, "rb") as fh:
+        actual = fh.read()
+    if actual != expected:
+        got, want = actual.split(b"\n"), expected.split(b"\n")
+        line = next((i for i, (g, w) in enumerate(zip(got, want), 1) if g != w), min(len(got), len(want)))
+        counts = (actual.count(b"\n"), expected.count(b"\n"), line)
+        errors.append(
+            "%s: stale aggregate: %d lines, the format shards give %d; first difference at line %d; "
+            "run `python3 tools/corpus.py aggregate`" % ((AGGREGATE_REL,) + counts)
+        )
+    return errors
+
+
+def static_cases(root, formats, errors):
+    """Yield (format, where, record) for every static case line in every shard, in aggregate order."""
+    for fmt in sorted(formats):
+        rel = formats[fmt].get("cases")
+        if rel is None:
+            continue
+        data = _read_shard(root, rel, errors)
+        if data is None:
+            continue
+        for lineno, line in enumerate(data.split(b"\n"), 1):
+            if not line.strip():
+                continue
+            where = "%s:%d" % (rel, lineno)
+            try:
+                rec = load_json_strict(line)
+            except ValueError as exc:
+                errors.append("%s: %s" % (where, exc))
+                continue
+            yield fmt, where, rec
+
+
+def generated_input_rel(formats, rec):
+    """Path of a generated case's input inside a hydrated root, from its id and its format's suffix."""
+    prefix, local = rec["id"].rsplit(".", 1)
+    return "/".join(("inputs", rec["format"], prefix, local + formats[rec["format"]]["generated_input_extension"]))
 
 
 def check_case(root, rec, profiles, spans, errors, where):
@@ -613,51 +892,59 @@ def check_profile_limits(rel, prof, errors):
             errors.append("%s: %s must be <= max_owned_bytes" % (rel, k))
 
 
+def load_profiles(root, entry, errors):
+    """A format's profile registry; empty when the format declares none."""
+    if "profiles" not in entry:
+        return {}
+    return _load_registry(root, entry["profiles"], "profile", errors)
+
+
 def check_manifests(root):
+    """Every format's profiles, span conventions, upstream lock, and case shard, plus the aggregate."""
     errors = []
-    profiles = _load_registry(root, "profiles", "profile", errors)
-    for (pid, rev), prof in sorted(profiles.items()):
-        check_profile_limits("manifests/profiles/%s.r%d.json" % (pid, rev), prof, errors)
-    spans = _load_registry(root, "span-conventions", "span", errors)
-    lock_rel = "manifests/upstreams.lock.json"
-    if os.path.exists(os.path.join(root, lock_rel)):
-        lock = _read_json(root, lock_rel, errors)
-        if isinstance(lock, dict) and lock.get("schema_version") != SUPPORTED["upstreams"]:
-            errors.append("%s: unsupported schema_version %r" % (lock_rel, lock.get("schema_version")))
-    rel = "manifests/cases.jsonl"
-    path = os.path.join(root, rel)
-    if not os.path.exists(path):
-        return errors
-    with open(path, "rb") as fh:
-        lines = fh.read().split(b"\n")
-    seen = set()
-    referenced = set()
-    for lineno, line in enumerate(lines, 1):
-        if not line.strip():
-            continue
-        where = "%s:%d" % (rel, lineno)
-        try:
-            rec = load_json_strict(line)
-        except ValueError as exc:
-            errors.append("%s: %s" % (where, exc))
-            continue
-        cid = rec.get("id") if isinstance(rec, dict) else None
-        if not isinstance(cid, str) or not COMPONENT_RE.match(cid) or len(cid) > 100:
-            errors.append("%s: invalid case id %r" % (where, cid))
-        elif cid in seen:
-            errors.append("%s: duplicate case id %s" % (where, cid))
-        seen.add(cid)
-        check_case(root, rec, profiles, spans, errors, "%s (%s)" % (where, cid))
-        if isinstance(rec, dict) and isinstance(rec.get("input"), dict) and "path" in rec["input"]:
-            referenced.add(rec["input"]["path"])
-    fixtures = os.path.join(root, "fixtures")
-    if os.path.isdir(fixtures):
-        for full in _walk_files(fixtures):
-            frel = os.path.relpath(full, root).replace(os.sep, "/")
-            if os.path.basename(frel) in (".gitkeep", "README.md"):
-                continue
-            if frel not in referenced:
-                errors.append("%s: fixture not referenced by any case" % frel)
+    formats = load_formats(root, errors)
+    registry_ok = not errors
+    seen = {}
+    for fmt in sorted(formats):
+        entry = formats[fmt]
+        profiles = load_profiles(root, entry, errors)
+        for (pid, rev), prof in sorted(profiles.items()):
+            rel = "%s/%s.r%d.json" % (entry["profiles"], pid, rev)
+            check_profile_limits(rel, prof, errors)
+            if prof.get("dialect") not in entry["dialects"]:
+                errors.append("%s: dialect %r is not declared for %s" % (rel, prof.get("dialect"), fmt))
+        spans = _load_registry(root, entry["span_conventions"], "span", errors) if "span_conventions" in entry else {}
+        if "upstreams" in entry:
+            lock = _read_json(root, entry["upstreams"], errors)
+            if isinstance(lock, dict) and lock.get("schema_version") != SUPPORTED["upstreams"]:
+                errors.append("%s: unsupported schema_version %r" % (entry["upstreams"], lock.get("schema_version")))
+        referenced = set()
+        for _fmt, where, rec in static_cases(root, {fmt: entry}, errors):
+            cid = rec.get("id") if isinstance(rec, dict) else None
+            if not isinstance(cid, str) or not COMPONENT_RE.match(cid) or len(cid) > 100:
+                errors.append("%s: invalid case id %r" % (where, cid))
+            elif cid in seen:
+                errors.append("%s: duplicate case id %s (also %s)" % (where, cid, seen[cid]))
+            else:
+                seen[cid] = where
+            if isinstance(rec, dict) and rec.get("format") != fmt:
+                errors.append(
+                    "%s (%s): format %r does not match its shard's format %r" % (where, cid, rec.get("format"), fmt)
+                )
+            elif isinstance(rec, dict) and rec.get("dialect") not in entry["dialects"]:
+                errors.append("%s (%s): dialect %r is not declared for %s" % (where, cid, rec.get("dialect"), fmt))
+            check_case(root, rec, profiles, spans, errors, "%s (%s)" % (where, cid))
+            if isinstance(rec, dict) and isinstance(rec.get("input"), dict) and "path" in rec["input"]:
+                referenced.add(rec["input"]["path"])
+        if "fixtures" in entry:
+            for full in _walk_files(os.path.join(root, *entry["fixtures"].split("/"))):
+                frel = os.path.relpath(full, root).replace(os.sep, "/")
+                if os.path.basename(frel) in (".gitkeep", "README.md"):
+                    continue
+                if frel not in referenced:
+                    errors.append("%s: fixture not referenced by any case" % frel)
+    if registry_ok:
+        errors.extend(check_aggregate(root, formats))
     return errors
 
 
@@ -672,27 +959,70 @@ def _load_generator(root, rel):
     return module
 
 
-def load_recipes(root, errors):
+def load_recipes(root, errors, formats=None):
+    """Recipe records from each registered format's recipe directory, keyed by repository path."""
+    if formats is None:
+        formats = load_formats(root, errors)
     out = {}
-    top = os.path.join(root, "recipes")
-    if not os.path.isdir(top):
-        return out
-    for full in _walk_files(top):
-        rel = os.path.relpath(full, root).replace(os.sep, "/")
-        if not rel.endswith(".json"):
+    for fmt in sorted(formats):
+        top_rel = formats[fmt].get("recipes")
+        if top_rel is None:
             continue
-        doc = _read_json(root, rel, errors)
-        if not isinstance(doc, dict):
-            continue
-        if doc.get("schema_version") != SUPPORTED["recipe"]:
-            errors.append("%s: unsupported schema_version %r" % (rel, doc.get("schema_version")))
-            continue
-        expected_rel = "recipes/%s/%s.r%s.json" % (doc.get("format"), doc.get("id"), doc.get("revision"))
-        if rel != expected_rel:
-            errors.append("%s: path must be %s" % (rel, expected_rel))
-            continue
-        out[rel] = doc
+        for name in sorted(os.listdir(os.path.join(root, *top_rel.split("/")))):
+            rel = "%s/%s" % (top_rel, name)
+            full = os.path.join(root, *rel.split("/"))
+            if not name.endswith(".json") or os.path.islink(full) or not os.path.isfile(full):
+                errors.append("%s: not a recipe record" % rel)
+                continue
+            doc = _read_json(root, rel, errors)
+            if not isinstance(doc, dict):
+                continue
+            if doc.get("schema_version") != SUPPORTED["recipe"]:
+                errors.append("%s: unsupported schema_version %r" % (rel, doc.get("schema_version")))
+                continue
+            if doc.get("format") != fmt:
+                errors.append(
+                    "%s: format %r does not match its recipe directory's format %r" % (rel, doc.get("format"), fmt)
+                )
+                continue
+            if doc.get("dialect") not in formats[fmt]["dialects"]:
+                errors.append("%s: dialect %r is not declared for %s" % (rel, doc.get("dialect"), fmt))
+                continue
+            expected_rel = "%s/%s.r%s.json" % (top_rel, doc.get("id"), doc.get("revision"))
+            if rel != expected_rel:
+                errors.append("%s: path must be %s" % (rel, expected_rel))
+                continue
+            out[rel] = doc
     return out
+
+
+def check_case_namespace(static_ids, recipes):
+    """Static and generated case ids share one namespace (DDR-0004, DDR-0014).
+
+    A generated id is <recipe id>.<local id>. Recipe ids are unique, no recipe id is a
+    dotted prefix of another, and no static id lies inside a recipe's generated prefix.
+    """
+    errors = []
+    by_id = {}
+    for rel in sorted(recipes):
+        rid = recipes[rel].get("id")
+        if rid in by_id:
+            errors.append("%s: recipe id %s is also declared by %s" % (rel, rid, by_id[rid]))
+        else:
+            by_id[rid] = rel
+    ids = sorted(by_id)
+    for a in ids:
+        for b in ids:
+            if b.startswith(a + "."):
+                errors.append("%s: recipe ids %s and %s share a generated case-id namespace" % (by_id[b], a, b))
+    for cid, where in sorted(static_ids.items()):
+        for rid in ids:
+            if cid.startswith(rid + "."):
+                errors.append(
+                    "%s: static case id %s is inside the generated case-id namespace of recipe %s (%s)"
+                    % (where, cid, rid, by_id[rid])
+                )
+    return errors
 
 
 def check_recipe(root, rel, doc, profiles, errors):
@@ -743,8 +1073,11 @@ def _inside(path, root):
 
 def _recipe_cases(root, rel, doc):
     """Yield concrete case records for one recipe, enforcing its declared caps."""
+    formats = load_formats(root, [])
+    if doc.get("format") not in formats:
+        raise HydrateError("%s: format %r is not registered and active" % (rel, doc.get("format")))
     gen = _load_generator(root, doc["generator"])
-    profile = _load_registry(root, "profiles", "profile", []).get((doc["profile"], doc["profile_revision"]))
+    profile = load_profiles(root, formats[doc["format"]], []).get((doc["profile"], doc["profile_revision"]))
     for name, value in sorted(doc["parameters"].items()):
         # A generator may receive a profile limit as limit_<field>; it must be the profile's value.
         if name.startswith("limit_"):
@@ -824,10 +1157,12 @@ def recipe_digest(case_lines):
 def hydrate(root, out, tier, recipe_filter=None):
     """Write every selected recipe's inputs and manifest into out. Returns a summary dict."""
     errors = []
-    profiles = _load_registry(root, "profiles", "profile", errors)
-    recipes = load_recipes(root, errors)
+    formats = load_formats(root, errors)
+    recipes = load_recipes(root, errors, formats)
+    profiles = {fmt: load_profiles(root, formats[fmt], errors) for fmt in formats}
     for rel, doc in recipes.items():
-        check_recipe(root, rel, doc, profiles, errors)
+        check_recipe(root, rel, doc, profiles[doc["format"]], errors)
+    static_ids = {rec.get("id") for _f, _w, rec in static_cases(root, formats, errors) if isinstance(rec, dict)}
     if errors:
         raise HydrateError("; ".join(errors))
     if _inside(out, root) or _inside(root, out):
@@ -845,7 +1180,7 @@ def hydrate(root, out, tier, recipe_filter=None):
     )
     work = tempfile.mkdtemp(prefix=".structcorpus-", dir=parent)
     try:
-        summary = _hydrate_into(root, work, recipes, selected, tier)
+        summary = _hydrate_into(root, work, recipes, selected, tier, formats, static_ids)
         os.rename(work, out)
     except BaseException:
         _remove_own_tree(work)
@@ -869,22 +1204,29 @@ def _remove_own_tree(work):
     os.rmdir(work)
 
 
-def _hydrate_into(root, work, recipes, selected, tier):
+def _hydrate_into(root, work, recipes, selected, tier, formats, static_ids):
     budget = TIER_CAPS[tier]
     summary = {"schema_version": SUPPORTED["hydrated"], "tier": tier, "recipes": []}
     written = 0
+    generated = set()
     with open(os.path.join(work, "cases.jsonl"), "wb") as manifest:
         for rel in selected:
             doc = recipes[rel]
             lines = []
             in_bytes = 0
             for cid, data, _record, line in _recipe_cases(root, rel, doc):
+                if cid in static_ids:
+                    raise HydrateError("%s: generated case id %s duplicates a static case" % (rel, cid))
+                if cid in generated:
+                    raise HydrateError("%s: generated case id %s is produced twice" % (rel, cid))
+                generated.add(cid)
                 written += len(data) + len(line) + 1  # inputs and manifest both count
                 if written > budget:
                     raise HydrateError("aggregate output exceeds the %s cap %d bytes" % (tier, budget))
                 dest = os.path.join(work, "inputs", doc["format"], doc["id"])
                 os.makedirs(dest, exist_ok=True)
-                with open(os.path.join(dest, cid.split(".")[-1] + ".yaml"), "xb") as fh:
+                ext = formats[doc["format"]]["generated_input_extension"]
+                with open(os.path.join(dest, cid.split(".")[-1] + ext), "xb") as fh:
                     fh.write(data)
                 lines.append(line)
                 in_bytes += len(data)
@@ -913,7 +1255,8 @@ def verify(root, out):
         summary = load_json_strict(fh.read())
     if summary.get("schema_version") != SUPPORTED["hydrated"]:
         return ["%s: unsupported schema_version %r" % (marker, summary.get("schema_version"))]
-    recipes = load_recipes(root, errors)
+    formats = load_formats(root, errors)
+    recipes = load_recipes(root, errors, formats)
     by_recipe = {}
     with open(os.path.join(out, "cases.jsonl"), "rb") as fh:
         for line in fh.read().split(b"\n"):
@@ -924,8 +1267,11 @@ def verify(root, out):
                 errors.append("%s: manifest line is not canonical" % rec.get("id"))
             rel = rec["input"]["recipe"]
             by_recipe.setdefault(rel, []).append(line)
-            fmt, rid = rec["format"], rec["id"].rsplit(".", 1)
-            path = os.path.join(out, "inputs", fmt, rid[0], rid[1] + ".yaml")
+            doc = recipes.get(rel)
+            if rec.get("format") not in formats or (doc is not None and doc["format"] != rec["format"]):
+                errors.append("%s: format %r is not its recipe's registered format" % (rec["id"], rec.get("format")))
+                continue
+            path = os.path.join(out, *generated_input_rel(formats, rec).split("/"))
             try:
                 with open(path, "rb") as f:
                     data = f.read()
@@ -985,7 +1331,8 @@ def list_entries(root, tier, show_budgets=False):
     allowed = TIER_ORDER[: TIER_ORDER.index(tier) + 1]
     errors = []
     rows = []
-    for rel, doc in sorted(load_recipes(root, errors).items()):
+    formats = load_formats(root, errors)
+    for rel, doc in sorted(load_recipes(root, errors, formats).items()):
         ex = doc["execution"]
         if ex["tier"] not in allowed:
             continue
@@ -1003,36 +1350,27 @@ def list_entries(root, tier, show_budgets=False):
         if show_budgets:
             row["output_bytes"] = sum(len(d) + len(line) + 1 for _, d, _r, line in _recipe_cases(root, rel, doc))
         rows.append(row)
-    path = os.path.join(root, "manifests", "cases.jsonl")
-    if os.path.exists(path):
-        with open(path, "rb") as fh:
-            for line in fh.read().split(b"\n"):
-                if not line.strip():
-                    continue
-                rec = load_json_strict(line)
-                ex = rec["execution"]
-                if ex["tier"] not in allowed:
-                    continue
-                rows.append(
-                    {
-                        "kind": "case",
-                        "name": rec["id"],
-                        "tier": ex["tier"],
-                        "profile": ",".join(
-                            sorted(
-                                {
-                                    "%s r%d" % (v["profile"], v["profile_revision"])
-                                    for v in rec["expectations"].get("value", [])
-                                }
-                            )
-                        )
-                        or "-",
-                        "cases": 1,
-                        "input_bytes": rec["input"]["bytes"],
-                        "hazards": list(ex.get("hazards", [])),
-                        "budgets": dict(ex.get("budgets", {})),
-                    }
+    for _fmt, _where, rec in static_cases(root, formats, errors):
+        ex = rec["execution"]
+        if ex["tier"] not in allowed:
+            continue
+        rows.append(
+            {
+                "kind": "case",
+                "name": rec["id"],
+                "tier": ex["tier"],
+                "profile": ",".join(
+                    sorted(
+                        {"%s r%d" % (v["profile"], v["profile_revision"]) for v in rec["expectations"].get("value", [])}
+                    )
                 )
+                or "-",
+                "cases": 1,
+                "input_bytes": rec["input"]["bytes"],
+                "hazards": list(ex.get("hazards", [])),
+                "budgets": dict(ex.get("budgets", {})),
+            }
+        )
     return rows
 
 
@@ -1066,15 +1404,79 @@ def cmd_canon(args):
 
 
 def check_recipes(root):
+    """Every format's recipes and generators, and the shared static and generated case-id namespace."""
     errors = []
-    profiles = _load_registry(root, "profiles", "profile", errors)
-    for rel, doc in load_recipes(root, errors).items():
-        check_recipe(root, rel, doc, profiles, errors)
+    formats = load_formats(root, errors)
+    recipes = load_recipes(root, errors, formats)
+    for fmt in sorted(formats):
+        entry = formats[fmt]
+        if "recipes" not in entry:
+            continue
+        profiles = load_profiles(root, entry, errors)
+        used = set()
+        for rel, doc in sorted(recipes.items()):
+            if doc["format"] == fmt:
+                check_recipe(root, rel, doc, profiles, errors)
+                used.add(doc.get("generator"))
+        for full in _walk_files(os.path.join(root, *entry["generators"].split("/"))):
+            grel = os.path.relpath(full, root).replace(os.sep, "/")
+            if "__pycache__" not in grel.split("/") and grel not in used:
+                errors.append("%s: generator not referenced by any recipe" % grel)
+    static_ids = {}
+    for _fmt, where, rec in static_cases(root, formats, []):
+        if isinstance(rec, dict) and isinstance(rec.get("id"), str):
+            static_ids.setdefault(rec["id"], where)
+    errors.extend(check_case_namespace(static_ids, recipes))
     return errors
 
 
+def check_all(root):
+    """Every `validate` check, each distinct problem reported once."""
+    errors = check_repository(root) + check_layout(root) + check_manifests(root) + check_recipes(root)
+    return list(dict.fromkeys(errors))
+
+
+def write_aggregate(root):
+    """Regenerate the static-case aggregate from the format shards. Returns (errors, records, changed)."""
+    errors = []
+    formats = load_formats(root, errors)
+    data = build_aggregate(root, formats, errors) if not errors else b""
+    if errors:
+        return errors, 0, False
+    path = os.path.join(root, *AGGREGATE_REL.split("/"))
+    if os.path.islink(path):
+        return ["%s: is a symbolic link" % AGGREGATE_REL], 0, False
+    records = sum(1 for line in data.split(b"\n") if line.strip())
+    if os.path.isfile(path):
+        with open(path, "rb") as fh:
+            if fh.read() == data:
+                return [], records, False
+    mode = (os.stat(path).st_mode & 0o777) if os.path.isfile(path) else 0o644
+    fd, tmp = tempfile.mkstemp(prefix=".cases-", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    return [], records, True
+
+
+def cmd_aggregate(args):
+    errors, records, changed = write_aggregate(args.root)
+    for err in errors:
+        print("error: " + err, file=sys.stderr)
+    if errors:
+        return 1
+    print("aggregate: %s %s (%d records)" % (AGGREGATE_REL, "written" if changed else "unchanged", records))
+    return 0
+
+
 def cmd_validate(args):
-    errors = check_repository(args.root) + check_manifests(args.root) + check_recipes(args.root)
+    errors = check_all(args.root)
     for err in errors:
         print("error: " + err, file=sys.stderr)
     if errors:
@@ -1090,6 +1492,9 @@ def main(argv=None):
     p_validate = sub.add_parser("validate", help="check repository rules")
     p_validate.add_argument("--root", default=ROOT, help=argparse.SUPPRESS)
     p_validate.set_defaults(func=cmd_validate)
+    p_agg = sub.add_parser("aggregate", help="regenerate manifests/cases.jsonl from the format case shards")
+    p_agg.add_argument("--root", default=ROOT, help=argparse.SUPPRESS)
+    p_agg.set_defaults(func=cmd_aggregate)
     p_canon = sub.add_parser("canon", help="print a JSON file in canonical form")
     p_canon.add_argument("file")
     p_canon.set_defaults(func=cmd_canon)

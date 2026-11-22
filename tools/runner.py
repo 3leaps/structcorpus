@@ -427,13 +427,13 @@ def _hydrated_cases(root):
     problems = corpus.verify(corpus.ROOT, root)
     if problems:
         raise ValueError("hydrated root failed verification: %s" % "; ".join(problems[:5]))
+    formats = corpus.load_formats(corpus.ROOT, [])
     with open(os.path.join(root, "cases.jsonl"), "rb") as fh:
         for line in fh.read().split(b"\n"):
             if not line:
                 continue
             rec = corpus.load_json_strict(line)
-            prefix, local = rec["id"].rsplit(".", 1)
-            yield rec, os.path.join(root, "inputs", rec["format"], prefix, local + ".yaml")
+            yield rec, os.path.join(root, *corpus.generated_input_rel(formats, rec).split("/"))
 
 
 def run_cases(root, image, argv, hazardous_only=True, runtime=None):

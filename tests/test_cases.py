@@ -72,15 +72,19 @@ def stored_json(value):
 
 
 class CaseRepo(unittest.TestCase):
-    """A disposable copy of the repository's manifests and fixtures."""
+    """A disposable copy of the repository's registered corpus trees."""
+
+    SHARD = os.path.join("manifests", "yaml", "cases.jsonl")
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = self._tmp.name
-        for sub in ("manifests", "fixtures"):
-            shutil.copytree(os.path.join(REPO, sub), os.path.join(self.root, sub))
+        for sub in ("manifests", "fixtures", "recipes", "generators"):
+            shutil.copytree(
+                os.path.join(REPO, sub), os.path.join(self.root, sub), ignore=shutil.ignore_patterns("__pycache__")
+            )
         shutil.copy(os.path.join(REPO, ".gitattributes"), self.root)
-        with open(os.path.join(self.root, "manifests", "cases.jsonl"), "rb") as fh:
+        with open(os.path.join(self.root, self.SHARD), "rb") as fh:
             self.cases = [json.loads(line) for line in fh.read().splitlines() if line.strip()]
         self.base = [json.loads(json.dumps(c)) for c in self.cases]
 
@@ -88,12 +92,14 @@ class CaseRepo(unittest.TestCase):
         self._tmp.cleanup()
 
     def save(self, cases=None, raw=None):
-        with open(os.path.join(self.root, "manifests", "cases.jsonl"), "wb") as fh:
+        """Write the YAML case shard, then regenerate the aggregate as `corpus.py aggregate` would."""
+        with open(os.path.join(self.root, self.SHARD), "wb") as fh:
             if raw is not None:
                 fh.write(raw)
             else:
                 for c in cases if cases is not None else self.cases:
                     fh.write(stored_json(c).encode() + b"\n")
+        corpus.write_aggregate(self.root)
 
     def errors(self):
         return corpus.check_repository(self.root) + corpus.check_manifests(self.root)
@@ -290,7 +296,7 @@ class TestSpec13(CaseRepo):
         self.assertEqual(v["documents"][0]["entries"][0][1], {"t": "str", "v": "a\u0000b"})
 
     def test_nonzero_eof_anchors_are_in_convention_scope(self):
-        with open(os.path.join(self.root, "manifests", "span-conventions", "yamlprims-node.r1.json")) as fh:
+        with open(os.path.join(self.root, "manifests", "yaml", "span-conventions", "yamlprims-node.r1.json")) as fh:
             conv = json.load(fh)
         self.assertNotIn("zero-width nodes only", conv["rules"]["scope"])
         self.assertIn("[3, 4)", conv["rules"]["non-zero-width-block-scalar"])
@@ -313,16 +319,16 @@ class TestSpec13(CaseRepo):
             self.assertEqual([v["error"] for v in r3], [err], data)
 
     def test_r3_profiles_cite_spec_13(self):
-        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
+        for name in os.listdir(os.path.join(self.root, "manifests", "yaml", "profiles")):
             if name in SPEC13_PROFILES:
-                with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                with open(os.path.join(self.root, "manifests", "yaml", "profiles", name)) as fh:
                     prof = json.load(fh)
                 self.assertEqual(prof["cites"][0]["url"], SPEC_V13_URL, name)
                 self.assertIn("4cf97b2d4efec16b6b41ea6e1acb83164a76aa45", prof["cites"][0]["revision"], name)
 
     def test_older_profiles_keep_their_binding(self):
-        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
-            with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+        for name in os.listdir(os.path.join(self.root, "manifests", "yaml", "profiles")):
+            with open(os.path.join(self.root, "manifests", "yaml", "profiles", name)) as fh:
                 prof = json.load(fh)
             if prof["id"].startswith("yamlprims-core") and name not in SPEC13_PROFILES:
                 self.assertNotIn(SPEC_V13_URL, [c["url"] for c in prof["cites"]], name)
@@ -352,8 +358,8 @@ class TestSpec14(CaseRepo):
 
     def test_named_profiles_cite_the_tagged_bytes(self):
         seen = set()
-        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
-            with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+        for name in os.listdir(os.path.join(self.root, "manifests", "yaml", "profiles")):
+            with open(os.path.join(self.root, "manifests", "yaml", "profiles", name)) as fh:
                 prof = json.load(fh)
             urls = [c["url"] for c in prof["cites"]]
             if SPEC_V14_URL in urls:
@@ -386,8 +392,8 @@ class TestSpec15(CaseRepo):
 
     def test_named_profiles_cite_the_tagged_bytes(self):
         seen = set()
-        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
-            with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+        for name in os.listdir(os.path.join(self.root, "manifests", "yaml", "profiles")):
+            with open(os.path.join(self.root, "manifests", "yaml", "profiles", name)) as fh:
                 prof = json.load(fh)
             urls = [c["url"] for c in prof["cites"]]
             if SPEC_V15_URL in urls:
@@ -403,9 +409,9 @@ class TestSpec15(CaseRepo):
     def test_r5_policy_matches_r4(self):
         for name in SPEC15_PROFILES:
             r4_name = name.replace(".r5.json", ".r4.json")
-            with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+            with open(os.path.join(self.root, "manifests", "yaml", "profiles", name)) as fh:
                 r5 = json.load(fh)
-            with open(os.path.join(self.root, "manifests", "profiles", r4_name)) as fh:
+            with open(os.path.join(self.root, "manifests", "yaml", "profiles", r4_name)) as fh:
                 r4 = json.load(fh)
             self.assertEqual(r5["id"], r4["id"])
             self.assertEqual(r5["revision"], 5)
@@ -802,9 +808,9 @@ class TestCaseRejections(CaseRepo):
         self.assertRejected("undefined in scalar-alias r2")
 
     def test_r2_profiles_cite_tagged_spec(self):
-        for name in os.listdir(os.path.join(self.root, "manifests", "profiles")):
+        for name in os.listdir(os.path.join(self.root, "manifests", "yaml", "profiles")):
             if name.endswith(".r2.json") and name.startswith("yamlprims-core") and "-limits." not in name:
-                with open(os.path.join(self.root, "manifests", "profiles", name)) as fh:
+                with open(os.path.join(self.root, "manifests", "yaml", "profiles", name)) as fh:
                     prof = json.load(fh)
                 urls = [c["url"] for c in prof["cites"]]
                 self.assertIn(SPEC_V11_URL, urls, name)
@@ -819,7 +825,7 @@ class TestCaseRejections(CaseRepo):
         self.assertRejected("reviewer distinct")
 
     def test_profile_schema_version(self):
-        path = os.path.join(self.root, "manifests", "profiles", "yaml-core.r1.json")
+        path = os.path.join(self.root, "manifests", "yaml", "profiles", "yaml-core.r1.json")
         with open(path, "rb") as fh:
             doc = json.loads(fh.read())
         doc["schema_version"] = "profile/v9"
@@ -828,8 +834,8 @@ class TestCaseRejections(CaseRepo):
         self.assertRejected("unsupported schema_version 'profile/v9'")
 
     def test_profile_file_name_must_match(self):
-        src = os.path.join(self.root, "manifests", "profiles", "yaml-core.r1.json")
-        os.rename(src, os.path.join(self.root, "manifests", "profiles", "yaml-core.json"))
+        src = os.path.join(self.root, "manifests", "yaml", "profiles", "yaml-core.r1.json")
+        os.rename(src, os.path.join(self.root, "manifests", "yaml", "profiles", "yaml-core.json"))
         self.assertRejected("file name must be yaml-core.r1.json")
 
 

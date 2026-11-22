@@ -137,7 +137,7 @@ class TestSpec14Boundaries(unittest.TestCase):
         self.assertEqual(spec14_boundaries.node_count(value), 131)
 
     def _params(self, profile_name, kind):
-        with open(os.path.join(REPO, "manifests", "profiles", profile_name)) as fh:
+        with open(os.path.join(REPO, "manifests", "yaml", "profiles", profile_name)) as fh:
             limits = json.load(fh)["limits"]
         params = {"set": kind}
         params.update({("limit_" + name): value for name, value in limits.items()})

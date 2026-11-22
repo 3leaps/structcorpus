@@ -1,6 +1,7 @@
 """Tests for tools/corpus.py (standard library unittest; Python 3.9+)."""
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -132,6 +133,10 @@ class TestRepositoryRules(RepoCase):
         self.assertRejected("symbolic links")
 
     def test_cli_exit_codes(self):
+        for sub in ("manifests", "fixtures", "recipes", "generators"):
+            shutil.copytree(
+                os.path.join(REPO, sub), os.path.join(self.root, sub), ignore=shutil.ignore_patterns("__pycache__")
+            )
         self.assertEqual(corpus.main(["validate", "--root", self.root]), 0)
         write(self.root, "fixtures/yaml/Bad.yaml", b"x")
         self.assertEqual(corpus.main(["validate", "--root", self.root]), 1)
