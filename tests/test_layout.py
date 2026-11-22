@@ -425,6 +425,52 @@ class TestRegistryPaths(LayoutRepo):
         self.assertRejected("yaml.cases: manifests/yaml is a symbolic link", errs)
         self.assertRejected("manifests/yaml: not a format directory declared by an active format", errs)
 
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "symlinks unavailable")
+    def test_symlinked_format_registry(self):
+        # Valid content outside the checkout must not be read through a link.
+        outside = os.path.join(self._tmp.name, "formats-elsewhere.json")
+        shutil.move(self.full(corpus.FORMATS_REL), outside)
+        os.symlink(outside, self.full(corpus.FORMATS_REL))
+        self.assertRejected("manifests/formats.json: not a regular file")
+
+    @unittest.skipIf(not hasattr(os, "symlink") or os.name == "nt", "symlinks unavailable")
+    def test_symlinked_record_file(self):
+        name = sorted(os.listdir(self.full("manifests/yaml/profiles")))[0]
+        rel = "manifests/yaml/profiles/" + name
+        outside = os.path.join(self._tmp.name, name)
+        shutil.move(self.full(rel), outside)
+        os.symlink(outside, self.full(rel))
+        self.assertRejected(rel + ": not a regular file")
+
+    def test_non_json_file_in_registry_directories(self):
+        for top, kind in (("manifests/yaml/profiles", "profile"), ("manifests/yaml/span-conventions", "span")):
+            with self.subTest(top=top):
+                self.write(top + "/ignored.txt", "null")
+                self.assertRejected("%s/ignored.txt: not a %s record (expected <id>.r<N>.json)" % (top, kind))
+                os.remove(self.full(top + "/ignored.txt"))
+
+    def test_non_object_json_records(self):
+        targets = (
+            "manifests/yaml/profiles/extra.r1.json",
+            "manifests/yaml/span-conventions/extra.r1.json",
+            "recipes/yaml/extra.r1.json",
+        )
+        for rel in targets:
+            for body in ("null", "[]", '"text"', "3"):
+                with self.subTest(rel=rel, body=body):
+                    self.write(rel, body + "\n")
+                    self.assertRejected(rel + ": not a JSON object")
+                    os.remove(self.full(rel))
+
+    def test_non_object_upstream_lock_and_registry(self):
+        for rel in ("manifests/yaml/upstreams.lock.json", corpus.FORMATS_REL):
+            original = self.read(rel)
+            for body in ("null", "[]"):
+                with self.subTest(rel=rel, body=body):
+                    self.write(rel, body + "\n")
+                    self.assertRejected(rel + ": not a JSON object")
+            self.write(rel, original)
+
     def test_overlap_within_a_format(self):
         self.edit_yaml_entry(lambda e: e.update(span_conventions="manifests/yaml/profiles"))
         self.assertRejected(

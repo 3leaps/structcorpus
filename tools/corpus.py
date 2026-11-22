@@ -22,6 +22,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import sys
 import tempfile
 
@@ -355,12 +356,30 @@ TYPED_TARGETS = {
 
 
 def _read_json(root, rel, errors):
+    """Read a JSON object record from a regular file inside the checkout.
+
+    A symlink or other non-regular file, unparseable JSON, or a document that is not an
+    object (including null, arrays and strings) is an error; the caller gets None.
+    """
+    full = os.path.join(root, *rel.split("/"))
     try:
-        with open(os.path.join(root, rel), "rb") as fh:
-            return load_json_strict(fh.read())
+        st = os.lstat(full)
+    except OSError as exc:
+        errors.append("%s: %s" % (rel, exc))
+        return None
+    if not stat.S_ISREG(st.st_mode):
+        errors.append("%s: not a regular file" % rel)
+        return None
+    try:
+        with open(full, "rb") as fh:
+            doc = load_json_strict(fh.read())
     except (OSError, ValueError) as exc:
         errors.append("%s: %s" % (rel, exc))
         return None
+    if not isinstance(doc, dict):
+        errors.append("%s: not a JSON object" % rel)
+        return None
+    return doc
 
 
 def _load_registry(root, top_rel, kind, errors):
@@ -372,8 +391,11 @@ def _load_registry(root, top_rel, kind, errors):
         return out
     for name in sorted(os.listdir(top)):
         rel = "%s/%s" % (top_rel, name)
+        if not name.endswith(".json"):
+            errors.append("%s: not a %s record (expected <id>.r<N>.json)" % (rel, kind))
+            continue
         doc = _read_json(root, rel, errors)
-        if not isinstance(doc, dict):
+        if doc is None:
             continue
         if doc.get("schema_version") != SUPPORTED[kind]:
             errors.append("%s: unsupported schema_version %r" % (rel, doc.get("schema_version")))
@@ -458,9 +480,6 @@ def load_formats(root, errors):
     """
     doc = _read_json(root, FORMATS_REL, errors)
     if doc is None:
-        return {}
-    if not isinstance(doc, dict):
-        errors.append("%s: registry is not an object" % FORMATS_REL)
         return {}
     unknown = sorted(set(doc) - {"schema_version", "formats"})
     if unknown:
@@ -916,7 +935,7 @@ def check_manifests(root):
         spans = _load_registry(root, entry["span_conventions"], "span", errors) if "span_conventions" in entry else {}
         if "upstreams" in entry:
             lock = _read_json(root, entry["upstreams"], errors)
-            if isinstance(lock, dict) and lock.get("schema_version") != SUPPORTED["upstreams"]:
+            if lock is not None and lock.get("schema_version") != SUPPORTED["upstreams"]:
                 errors.append("%s: unsupported schema_version %r" % (entry["upstreams"], lock.get("schema_version")))
         referenced = set()
         for _fmt, where, rec in static_cases(root, {fmt: entry}, errors):
@@ -975,7 +994,7 @@ def load_recipes(root, errors, formats=None):
                 errors.append("%s: not a recipe record" % rel)
                 continue
             doc = _read_json(root, rel, errors)
-            if not isinstance(doc, dict):
+            if doc is None:
                 continue
             if doc.get("schema_version") != SUPPORTED["recipe"]:
                 errors.append("%s: unsupported schema_version %r" % (rel, doc.get("schema_version")))
