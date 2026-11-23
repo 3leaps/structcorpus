@@ -50,7 +50,7 @@ ci() { # ci MODE [ENV...]
   local mode="$1"
   shift
   : >"$FIXTURE_LOG"
-  (cd "$work" && env EVENT_SHA="$c1" EVENT_AFTER="${after:-$object}" "$@" ./scripts/release-ci-verify-tag.sh "$mode") >"$scratch/out" 2>&1
+  (cd "$work" && env EVENT_SHA="${sha:-$c1}" EVENT_AFTER="${after:-$object}" "$@" ./scripts/release-ci-verify-tag.sh "$mode") >"$scratch/out" 2>&1
 }
 refused() { # refused PATTERN MODE [ENV...]
   local pattern="$1"
@@ -70,9 +70,14 @@ refused() { # refused PATTERN MODE [ENV...]
 reset_fixture
 ci bind
 [[ "$(cat "$scratch/out")" == "$object" ]]
-# An event that names only the commit cannot bind the original object: refuse,
-# both for the unchanged tag and after a same-commit replacement.
-after="$c1" refused 'names only the commit' bind
+# GitHub has reported github.sha both as the peeled commit and as the tag
+# object itself; the latter is accepted only when it equals `after`.
+sha="$object" ci bind
+[[ "$(cat "$scratch/out")" == "$object" ]]
+sha="$c2" refused 'no longer points at the event commit' bind
+# An event whose `after` names only the commit cannot bind the original object:
+# refuse, both for the unchanged tag and after a same-commit replacement.
+after="$c1" refused 'does not name the pushed tag object' bind
 # bind: refusals.
 refused 'canonical' bind TAG=1.2.3
 refused 'event ref is not this tag' bind EVENT_REF=refs/tags/v9.9.9
@@ -87,15 +92,16 @@ reset_fixture
 old="$object"
 g -C "$src" tag -f -a -m 'Release 1.2.3' v1.2.3 "$c2" >/dev/null # moved to another commit
 g -C "$src" push -q -f "$origin" refs/tags/v1.2.3
-after="$old" refused 'no longer points at the event commit' bind
+after="$old" refused 'replaced after the triggering push' bind
 reset_fixture
 old="$object"
 sleep 1
 g -C "$src" tag -f -a -m 'Release 1.2.3 again' v1.2.3 "$c1" >/dev/null # replaced, same commit
 g -C "$src" push -q -f "$origin" refs/tags/v1.2.3
 after="$old" refused 'replaced after the triggering push' bind
-after="$c1" refused 'names only the commit' bind
-unset after
+after="$c1" refused 'does not name the pushed tag object' bind
+sha="$old" after="$old" refused 'replaced after the triggering push' bind
+unset after sha
 
 # verify: positive control, then each refusal.
 reset_fixture
