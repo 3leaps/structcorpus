@@ -4,53 +4,61 @@
 Equivalent to ``python3 -m unittest discover -s TEST_DIR`` from the current
 directory, but the exit status also requires at least one executed test and
 no discovery errors: on Python 3.9 to 3.11, unittest exits 0 when discovery
-finds no tests. A test counts as executed when its body reported an outcome
-(success, failure, error, expected failure, unexpected success, or a subtest
-result); a skipped test does not. Class, module and subtest skips are neither
-counted nor treated as missing execution. Standard library only (3.9+).
+finds no tests. A test counts as executed when its test method was entered and
+the test did not end as a whole-test skip; fixtures (setUp, cleanups, subtests
+outside the method) cannot mark a test executed. Class, module and subtest
+skips are neither counted nor treated as missing execution. Standard library
+only (3.9+).
 
 Usage: run-unit-tests.py TEST_DIR
 """
 
+import functools
 import os
 import sys
 import unittest
 
+_SUBTEST = getattr(unittest.case, "_SubTest", ())
+
 
 class CountingResult(unittest.TextTestResult):
-    """Text result that records the ids of tests whose bodies ran."""
+    """Text result that records whole-test skips (not subtest skips)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.executed = set()
+        self.whole_skips = set()
 
-    def _ran(self, test):
-        if isinstance(test, unittest.TestCase):
-            self.executed.add(test.id())
+    def addSkip(self, test, reason):
+        if isinstance(test, unittest.TestCase) and not isinstance(test, _SUBTEST):
+            self.whole_skips.add(test.id())
+        super().addSkip(test, reason)
 
-    def addSuccess(self, test):
-        self._ran(test)
-        super().addSuccess(test)
 
-    def addFailure(self, test, err):
-        self._ran(test)
-        super().addFailure(test, err)
+def _recording(method, test_id, entered):
+    @functools.wraps(method)
+    def body(*args, **kwargs):
+        entered.add(test_id)
+        return method(*args, **kwargs)
 
-    def addError(self, test, err):
-        self._ran(test)
-        super().addError(test, err)
+    return body
 
-    def addExpectedFailure(self, test, err):
-        self._ran(test)
-        super().addExpectedFailure(test, err)
 
-    def addUnexpectedSuccess(self, test):
-        self._ran(test)
-        super().addUnexpectedSuccess(test)
+def instrument(suite, entered):
+    """Wrap every test method so entering its body records the test id.
 
-    def addSubTest(self, test, subtest, err):
-        self._ran(test)
-        super().addSubTest(test, subtest, err)
+    Fixture callbacks (setUp, cleanups, subtests outside the body) cannot mark
+    a test as executed; only the test method itself can.
+    """
+    for test in suite:
+        if isinstance(test, unittest.TestSuite):
+            instrument(test, entered)
+        elif isinstance(test, unittest.TestCase):
+            name = test._testMethodName
+            method = getattr(test, name, None)
+            if method is None:
+                continue
+
+            setattr(test, name, _recording(method, test.id(), entered))
 
 
 def main(argv: list) -> int:
@@ -62,11 +70,14 @@ def main(argv: list) -> int:
     sys.path[0] = os.getcwd()
     loader = unittest.TestLoader()
     suite = loader.discover(argv[1])
+    entered = set()
+    instrument(suite, entered)
     result = unittest.TextTestRunner(verbosity=1, resultclass=CountingResult).run(suite)
+    executed = entered - result.whole_skips
     if loader.errors:
         print(f"error: {len(loader.errors)} test module(s) failed to load", file=sys.stderr)
         return 1
-    if not result.executed:
+    if not executed:
         print("error: no test was executed (none discovered, or all skipped)", file=sys.stderr)
         return 1
     return 0 if result.wasSuccessful() else 1
