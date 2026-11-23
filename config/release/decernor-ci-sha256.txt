@@ -1,0 +1,2 @@
+59952ee941632b938b8096cdec3cd86a448a6badcfa673093dfdad283794a606  decernor_0.1.9_linux_amd64.tar.gz
+3bcf59a8fc95cf6f41f64e60b566705023d5dfa6298493b62f337417888fe266  decernor_0.1.9_darwin_arm64.tar.gz

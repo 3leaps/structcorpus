@@ -5,7 +5,7 @@ root="$(cd "$(dirname "$0")/.." && pwd -P)"
 scratch="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/repo/scripts" "$scratch/external" "$scratch/bin"
-cp "$root/scripts/release-tag-operator.sh" "$root/scripts/release-prepare-tag-message.py" "$scratch/repo/scripts/"
+cp "$root/scripts/release-tag-operator.sh" "$root/scripts/release-prepare-tag-message.py" "$root/scripts/release-guard-tag-input.sh" "$scratch/repo/scripts/"
 printf '1.2.3\n' >"$scratch/repo/VERSION"
 cat >"$scratch/bin/git" <<'SH'
 #!/usr/bin/env bash

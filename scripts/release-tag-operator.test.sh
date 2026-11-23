@@ -6,7 +6,7 @@ root="$(cd "$(dirname "$0")/.." && pwd -P)"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/repo/scripts" "$scratch/bin" "$scratch/external"
-cp "$root/scripts/release-tag-operator.sh" "$scratch/repo/scripts/"
+cp "$root/scripts/release-tag-operator.sh" "$root/scripts/release-guard-tag-input.sh" "$scratch/repo/scripts/"
 cat >"$scratch/repo/scripts/release-inspect-tag-ruleset.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s: synthetic tag-rule report for %s\n' "${REPORT:-FOUND}" "$1"

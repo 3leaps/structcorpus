@@ -88,7 +88,7 @@ Optional inputs (unset means the default shown):
 | Variable                           | Default       | Purpose and constraints                                                                                                                                                                                 |
 | ---------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `STRUCTCORPUS_APPROVED_ENV_LOADER`   | unset         | Maintainer shell file sourced by the tag targets before their guards run. When set it must be an absolute, readable regular file (not a symlink) outside the repository, and it must exit successfully. |
-| `STRUCTCORPUS_REQUIRE_TAG`           | `0`           | `1` makes `make release-guard-tag-version` require `STRUCTCORPUS_RELEASE_TAG` instead of defaulting to `v<VERSION>`.                                                                                      |
+| `STRUCTCORPUS_REQUIRE_TAG`           | `0`           | `1` adds the strict checks to `make release-guard-tag-version`: detached clean checkout, `origin` on GitHub, and the remote tag state. The tag itself is always required. |
 | `STRUCTCORPUS_LIMENSAFE_BIN`         | `limensafe`   | Absolute path to the public-surface scanner when it is not on `PATH`.                                                                                                                                   |
 | `STRUCTCORPUS_SURFACE_SCOPE`         | `pr`          | `release` scans every commit message in history; the pull-request and release targets set it themselves.                                                                                                |
 | `STRUCTCORPUS_SURFACE_BASE`          | `origin/main` | Base commit for the pull-request commit-message scan.                                                                                                                                                   |
@@ -101,9 +101,10 @@ fault-injection hook used only by the tooling tests), and
 `STRUCTCORPUS_SURFACE_BASELINE_ONLY` and `STRUCTCORPUS_SURFACE_BRANCH_NAME` (set
 only by the CI baseline scan).
 
-The tag comes only from `STRUCTCORPUS_RELEASE_TAG`. The version guard and the
-tag targets refuse to start while the generic `RELEASE_TAG` is set, even to an
-empty value, so `unset RELEASE_TAG` first.
+The tag comes only from `STRUCTCORPUS_RELEASE_TAG`; no target derives it from
+`VERSION`. Every tag-consuming target and script refuses to start while the
+generic `RELEASE_TAG` is set from any origin (environment or `make` command
+line), even to an empty value, so `unset RELEASE_TAG` first.
 
 ### Tagging (maintainer machine)
 
@@ -122,6 +123,8 @@ empty value, so `unset RELEASE_TAG` first.
       remote object, GitHub `valid`): `make release-push-tag`. The push reports
       the tag ruleset but does not enforce it; `make release-preflight` does,
       so rerun it if anything changed since.
+- [ ] The `Verify release tag` workflow run for the tag passed (consistency
+      evidence, not authorization)
 - [ ] Re-verify the published tag from a clean checkout:
       `make release-verify-published-tag` (and
       `make release-verify-remote-tag` to compare local and remote objects)

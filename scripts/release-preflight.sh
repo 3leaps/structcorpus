@@ -2,7 +2,7 @@
 # Pre-tag gate: every check that would otherwise fail only after the signed tag
 # is pushed. Read-only; run from the exact main commit that will be tagged.
 #
-# Usage: release-preflight.sh   (STRUCTCORPUS_RELEASE_TAG, else v<VERSION>)
+# Usage: STRUCTCORPUS_RELEASE_TAG=vX.Y.Z release-preflight.sh   (no default is derived)
 set -euo pipefail
 for _git_var in $(compgen -e); do
   case "$_git_var" in
@@ -19,8 +19,11 @@ die() {
 ok() { echo "[ok] $*"; }
 root="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$root"
+# shellcheck source=scripts/release-guard-tag-input.sh
+source "$root/scripts/release-guard-tag-input.sh"
+release_guard_tag_input || exit 1
 version="$(tr -d ' \t\r\n' <VERSION)"
-tag="${STRUCTCORPUS_RELEASE_TAG:-v$version}"
+tag="$STRUCTCORPUS_RELEASE_TAG"
 [[ "$tag" == "v$version" ]] || die "release tag $tag does not match VERSION $version"
 
 [[ -z "$(git status --porcelain)" ]] || die 'working tree is not clean'
@@ -66,7 +69,7 @@ outside_real="$(cd "$outside" && pwd -P)"
 home_real="$(cd "$HOME" && pwd -P)"
 [[ "$outside_real/" != "$home_real/"* ]] || die "temporary clone $outside_real is under the home directory"
 git clone --quiet --no-hardlinks "$root" "$outside/src"
-if ! (cd "$outside/src" && python3 -B -m unittest discover -s tests >"$outside/test.log" 2>&1); then
+if ! (cd "$outside/src" && python3 -B scripts/run-unit-tests.py tests >"$outside/test.log" 2>&1); then
   tail -20 "$outside/test.log" >&2
   die 'tests fail from a clone outside the home directory'
 fi

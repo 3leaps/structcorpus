@@ -11,6 +11,9 @@ for _git_var in $(compgen -e); do
 done
 unset _git_var
 export GIT_NO_REPLACE_OBJECTS=1
+# shellcheck source=scripts/release-guard-tag-input.sh
+source "$(dirname "$0")/release-guard-tag-input.sh"
+release_guard_tag_input || exit 1
 die() {
   echo "error: $*" >&2
   exit 1

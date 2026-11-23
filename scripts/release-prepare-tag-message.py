@@ -5,6 +5,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 FOOTER = re.compile(
     r"(?:^|\n\n)"
@@ -27,7 +28,7 @@ def subject_for(tag: str) -> str:
     return f"Release {tag[1:]}" if tag.startswith("v") else tag
 
 
-def validate_message(data: bytes, subject: str | None = None) -> str:
+def validate_message(data: bytes, subject: Optional[str] = None) -> str:
     try:
         message = data.decode("utf-8")
     except UnicodeError:
@@ -81,6 +82,8 @@ def message_dir(root: Path, tag: str) -> Path:
 
 def prepare() -> None:
     root = Path(__file__).resolve().parent.parent
+    if "RELEASE_TAG" in os.environ:
+        fail("generic RELEASE_TAG alias is forbidden; unset it and use STRUCTCORPUS_RELEASE_TAG")
     tag = os.environ.get("STRUCTCORPUS_RELEASE_TAG", "")
     if tag != f"v{(root / 'VERSION').read_text().strip()}":
         fail("release tag must match VERSION")

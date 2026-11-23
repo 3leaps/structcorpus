@@ -85,7 +85,7 @@ git -C "$fixture" config gpg.format openpgp
 git -C "$fixture" config gpg.program gpg
 git -C "$fixture" config commit.gpgsign false
 mkdir -p "$fixture/docs/security" "$fixture/keys" "$fixture/scripts" "$fixture/config/release"
-cp "$root/scripts/verify-pinned-tag.sh" "$root/scripts/validate-release-anchors.sh" "$root/scripts/release-decernor.sh" "$fixture/scripts/"
+cp "$root/scripts/verify-pinned-tag.sh" "$root/scripts/validate-release-anchors.sh" "$root/scripts/release-decernor.sh" "$root/scripts/release-guard-tag-input.sh" "$fixture/scripts/"
 cp "$root/config/release/tagger-identity.txt" "$fixture/config/release/"
 printf '%s\n' "$subkey" >"$fixture/config/release/signing-subkey.txt"
 gpg --batch --armor --export "$primary" >"$fixture/docs/security/release-signing-keys.asc"

@@ -5,7 +5,7 @@
 .PHONY: release-github-preflight release-preflight release-guard-tag-name release-guard-tag-version release-guard-signing-tag
 .PHONY: release-guard-release-surfaces sync-changelog-links release-prepare-tag-message release-tag release-push-tag
 .PHONY: release-verify-tag release-verify-published-tag release-verify-remote-tag release-export-pin release-validate-pin
-.PHONY: release-insert-anchors release-anchors-check release-tooling-test
+.PHONY: release-insert-anchors release-anchors-check release-tooling-test release-guard-tag-input
 
 PYTHON ?= python3
 GONEAT ?= goneat
@@ -75,15 +75,22 @@ pr-final: check ## Maintainer PR gate: check plus the required PR-scope surface 
 # STRUCTCORPUS_GPG_SIGNING_FINGERPRINT, STRUCTCORPUS_PGP_KEY_ID (<subkey>!),
 # STRUCTCORPUS_GPG_HOMEDIR and STRUCTCORPUS_DECERNOR_BIN.
 
+# The release tag is an explicit input (PDR-0008 section 2.4). Every target that
+# consumes it runs this guard first: a generic RELEASE_TAG from any origin
+# (environment, command line, makefile) is refused before any side effect.
+release-guard-tag-input: ## Guard: refuse a generic RELEASE_TAG; require canonical STRUCTCORPUS_RELEASE_TAG
+	$(if $(filter-out undefined,$(origin RELEASE_TAG)),$(error generic RELEASE_TAG alias is forbidden (origin: $(origin RELEASE_TAG)); use STRUCTCORPUS_RELEASE_TAG))
+	@./scripts/release-guard-tag-input.sh
+
 release-github-preflight: ## Verify the remote tag-protection ruleset and immutable releases
 	@./scripts/release-github-preflight.sh
 
-release-preflight: ## Pre-tag gate: clean synced main, changelog, pins, dates, and release surface scan
+release-preflight: release-guard-tag-input ## Pre-tag gate: clean synced main, changelog, pins, dates, and release surface scan
 	@./scripts/release-verify-committed-anchors.sh
 	@$(MAKE) --no-print-directory surface-scan-release
 	@./scripts/release-preflight.sh
 
-release-guard-tag-name: ## Guard: STRUCTCORPUS_RELEASE_TAG set and canonical vX.Y.Z (no VERSION check)
+release-guard-tag-name: release-guard-tag-input ## Guard: STRUCTCORPUS_RELEASE_TAG set and canonical vX.Y.Z (no VERSION check)
 	@if [ -z "$(STRUCTCORPUS_RELEASE_TAG)" ]; then \
 		echo "STRUCTCORPUS_RELEASE_TAG not set (example: STRUCTCORPUS_RELEASE_TAG=v$(VERSION))." >&2; \
 		exit 1; \
@@ -92,7 +99,7 @@ release-guard-tag-name: ## Guard: STRUCTCORPUS_RELEASE_TAG set and canonical vX.
 		echo "STRUCTCORPUS_RELEASE_TAG must be canonical vX.Y.Z" >&2; exit 1; }
 	@echo "[ok] release tag name $(STRUCTCORPUS_RELEASE_TAG) is canonical"
 
-release-guard-tag-version: ## Guard: STRUCTCORPUS_RELEASE_TAG canonical and matches VERSION
+release-guard-tag-version: release-guard-tag-input ## Guard: STRUCTCORPUS_RELEASE_TAG canonical and matches VERSION
 	@if [ -z "$(STRUCTCORPUS_RELEASE_TAG)" ]; then \
 		echo "STRUCTCORPUS_RELEASE_TAG not set (example: STRUCTCORPUS_RELEASE_TAG=v$(VERSION))." >&2; \
 		exit 1; \
@@ -108,24 +115,24 @@ release-guard-release-surfaces: ## Verify CHANGELOG.md section and compare links
 sync-changelog-links: ## Sync CHANGELOG compare-link footers to VERSION
 	@./scripts/sync-changelog-links.sh
 
-release-prepare-tag-message: ## Maintainer-only: prepare and review the external per-cut tag message
+release-prepare-tag-message: release-guard-tag-input ## Maintainer-only: prepare and review the external per-cut tag message
 	@./scripts/release-tag-operator.sh prepare-message
 
-release-tag: ## Maintainer-only: create and verify a local signed version tag (no push)
+release-tag: release-guard-tag-input ## Maintainer-only: create and verify a local signed version tag (no push)
 	@./scripts/release-tag-operator.sh local-tag
 
-release-push-tag: ## Maintainer-only: publish and verify the signed version tag
+release-push-tag: release-guard-tag-input ## Maintainer-only: publish and verify the signed version tag
 	@./scripts/release-tag-operator.sh remote-push
 
-release-verify-tag: ## Verify the local tag using only the committed public pin
+release-verify-tag: release-guard-tag-input ## Verify the local tag using only the committed public pin
 	@./scripts/release-verify-tag.sh
 
 # The published-tag check installs the remote tag as the local ref only after
 # every check passes.
-release-verify-published-tag: release-guard-tag-name ## Verify the published tag object and signature against its committed pin
+release-verify-published-tag: release-guard-tag-input release-guard-tag-name ## Verify the published tag object and signature against its committed pin
 	@STRUCTCORPUS_RELEASE_TAG="$(STRUCTCORPUS_RELEASE_TAG)" ./scripts/release-verify-published-tag.sh
 
-release-verify-remote-tag: ## Compare local and remote tag objects and GitHub verification
+release-verify-remote-tag: release-guard-tag-input ## Compare local and remote tag objects and GitHub verification
 	@./scripts/release-verify-remote-tag.sh
 
 release-export-pin: ## Maintainer-only: export the approved public key when no pin exists

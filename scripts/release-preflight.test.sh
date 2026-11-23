@@ -11,6 +11,7 @@ unset RELEASE_TAG STRUCTCORPUS_RELEASE_TAG
 repo="$scratch/repo"
 mkdir -p "$repo/scripts" "$repo/config/release" "$repo/docs/security" "$repo/keys" "$scratch/bin"
 cp "$root/scripts/release-preflight.sh" "$root/scripts/release-guard-release-surfaces.sh" \
+  "$root/scripts/release-guard-tag-input.sh" \
   "$root/scripts/release-github-preflight.sh" "$root/scripts/release-gh.sh" \
   "$root/scripts/release-verify-committed-anchors.sh" "$root/scripts/release-decernor.sh" \
   "$root/scripts/validate-release-anchors.sh" "$root/scripts/committed_tree.py" \
@@ -58,7 +59,7 @@ real_python3="$(command -v python3)"
 cat >"$scratch/bin/python3" <<SH
 #!/usr/bin/env bash
 case " \$* " in
-    *" -m unittest "*) printf 'python3 %s\\n' "\$*" >> "\$FIXTURE_LOG" ;;
+    *"/run-unit-tests.py "* | *" scripts/run-unit-tests.py "*) printf 'python3 %s\\n' "\$*" >> "\$FIXTURE_LOG" ;;
     *) exec "$real_python3" "\$@" ;;
 esac
 SH
@@ -96,7 +97,12 @@ export PATH="$scratch/bin:$PATH" FIXTURE_LOG="$scratch/calls.log"
 
 run() {
   : >"$FIXTURE_LOG"
-  (cd "$repo" && "$@" ./scripts/release-preflight.sh) >"$scratch/out" 2>&1
+  (cd "$repo" && env STRUCTCORPUS_RELEASE_TAG=v1.2.3 "$@" ./scripts/release-preflight.sh) >"$scratch/out" 2>&1
+}
+# run_untagged: no STRUCTCORPUS_RELEASE_TAG at all.
+run_untagged() {
+  : >"$FIXTURE_LOG"
+  (cd "$repo" && env -u STRUCTCORPUS_RELEASE_TAG "$@" ./scripts/release-preflight.sh) >"$scratch/out" 2>&1
 }
 
 # Final gate passes: preflight completes and check was the terminal call.
@@ -108,7 +114,7 @@ run env FIXTURE_CHECK=pass || {
 grep -q '^\[ok\] check gate passed' "$scratch/out"
 grep -q '^\[ok\] preflight passed for v1.2.3' "$scratch/out"
 [[ "$(tail -1 "$FIXTURE_LOG")" == 'make --no-print-directory check' ]]
-grep -q '^python3 -B -m unittest discover -s tests$' "$FIXTURE_LOG"
+grep -q '^python3 -B scripts/run-unit-tests.py tests$' "$FIXTURE_LOG"
 
 # Final gate fails: preflight fails, names the gate, and never claims success.
 if run env FIXTURE_CHECK=fail; then
@@ -177,5 +183,59 @@ run env FIXTURE_CHECK=pass || {
   exit 1
 }
 grep -q '^\[ok\] CHANGELOG.md section and compare links cover 1.2.3' "$scratch/out"
+
+# The tag is an explicit input: no VERSION-derived default, and the generic
+# alias is refused even when empty, before any other gate runs.
+if run_untagged env FIXTURE_CHECK=pass; then
+  echo 'error: preflight passed without STRUCTCORPUS_RELEASE_TAG' >&2
+  exit 1
+fi
+grep -q 'STRUCTCORPUS_RELEASE_TAG is required' "$scratch/out"
+[[ ! -s "$FIXTURE_LOG" ]] || {
+  echo 'error: preflight ran a gate before refusing a missing tag' >&2
+  exit 1
+}
+for alias in v1.2.3 ''; do
+  if run env RELEASE_TAG="$alias" FIXTURE_CHECK=pass; then
+    echo "error: preflight passed with RELEASE_TAG='$alias'" >&2
+    exit 1
+  fi
+  grep -q 'generic RELEASE_TAG alias is forbidden' "$scratch/out"
+done
+
+# The unit-test gate itself, with real Python: it must refuse zero discovered
+# tests (unittest alone exits 0 for that on Python 3.9 to 3.11), a failing test
+# and an import error, and accept a passing test. Every python3 found is tried,
+# so a machine carrying the 3.9 floor exercises it.
+runner="$root/scripts/run-unit-tests.py"
+pythons=()
+for candidate in "$(PATH="${PATH#"$scratch/bin:"}" command -v python3)" /usr/bin/python3; do
+  [[ -x "$candidate" ]] || continue
+  for seen in ${pythons[@]+"${pythons[@]}"}; do [[ "$seen" -ef "$candidate" ]] && continue 2; done
+  pythons+=("$candidate")
+done
+[[ "${#pythons[@]}" -gt 0 ]] || {
+  echo 'error: no python3 for the unit-test gate controls' >&2
+  exit 1
+}
+for case in pass zero fail importerr; do mkdir -p "$scratch/ut/$case/tests"; done
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n' >"$scratch/ut/pass/tests/test_a.py"
+printf '# no tests\n' >"$scratch/ut/zero/tests/test_empty.py"
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_bad(self):\n        self.fail("x")\n' >"$scratch/ut/fail/tests/test_a.py"
+printf 'import not_a_module_for_this_control\n' >"$scratch/ut/importerr/tests/test_a.py"
+for py in "${pythons[@]}"; do
+  version="$("$py" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+  for case in pass zero fail importerr; do
+    rc=0
+    (cd "$scratch/ut/$case" && "$py" -B "$runner" tests) >/dev/null 2>&1 || rc=$?
+    want=1
+    [[ "$case" == pass ]] && want=0
+    [[ "$rc" == "$want" ]] || {
+      echo "error: unit-test gate on Python $version: $case exited $rc, expected $want" >&2
+      exit 1
+    }
+  done
+  echo "[ok] unit-test gate on Python $version: passes one test; refuses zero tests, a failure and an import error"
+done
 
 echo '[ok] preflight reaches its final gate and fails closed when it fails'

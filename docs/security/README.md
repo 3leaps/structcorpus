@@ -33,3 +33,14 @@ uses an isolated keyring and requires the exact signing subkey and the
 committed tagger identity. GitHub Verified with reason `valid` is an
 additional check (`make release-verify-published-tag`). Tags created before
 the pin was committed are not verified by it and are not re-signed.
+
+On every pushed `v*` tag, the read-only workflow
+[`tag-verify.yml`](../../.github/workflows/tag-verify.yml) installs Decernor
+from the archive digest committed in
+[`config/release/decernor-ci-sha256.txt`](../../config/release/decernor-ci-sha256.txt),
+checks the pin against both anchors, verifies the tag signature against the
+pinned signing subkey and tagger identity read from the tagged commit, and
+requires GitHub to report the tag verified. A passing run is consistency
+evidence, not release authorization: the maintainer's signature on the tag is
+the authorization, and the expected primary still has to be established
+independently as described above.

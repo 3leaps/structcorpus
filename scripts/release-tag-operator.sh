@@ -13,12 +13,11 @@ esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$root"
-# Check the sole tag input before an optional loader can use it to select a cut.
-: "${STRUCTCORPUS_RELEASE_TAG:?set the intended release tag before loading the environment}"
-[[ "$STRUCTCORPUS_RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
-  echo 'error: canonical release tag vX.Y.Z required' >&2
-  exit 1
-}
+# Check the sole tag input, and refuse the generic alias, before an optional
+# loader can use either to select a cut.
+# shellcheck source=scripts/release-guard-tag-input.sh
+source "$(dirname "${BASH_SOURCE[0]}")/release-guard-tag-input.sh"
+release_guard_tag_input || exit 1
 [[ "$STRUCTCORPUS_RELEASE_TAG" == "v$(cat VERSION)" ]] || {
   echo 'error: release tag must match VERSION' >&2
   exit 1
@@ -50,6 +49,7 @@ if [[ "${STRUCTCORPUS_APPROVED_ENV_LOADER+set}" == set ]]; then
     echo 'error: approved environment loader failed' >&2
     exit 1
   }
+  release_guard_tag_input || exit 1
 fi
 
 # A sourced environment may change directory. Bind every guard to this repo.

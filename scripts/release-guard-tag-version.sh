@@ -31,7 +31,11 @@ main() {
     exit 1
   fi
   expected="v${version}"
-  tag="${STRUCTCORPUS_RELEASE_TAG:-$expected}"
+  if [[ -z "${STRUCTCORPUS_RELEASE_TAG:-}" ]]; then
+    echo "error: STRUCTCORPUS_RELEASE_TAG is required (no default is derived)" >&2
+    exit 1
+  fi
+  tag="$STRUCTCORPUS_RELEASE_TAG"
   require_tag="${STRUCTCORPUS_REQUIRE_TAG:-0}"
 
   if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
