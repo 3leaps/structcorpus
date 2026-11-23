@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Prepare a complete public tag message outside the repository, without clobber."""
+"""Prepare a public tag message outside the repository, without clobber.
+
+A new message is drafted from the release's dated CHANGELOG.md section, copied
+as written once the changelog passes the release-surface guard. It carries a
+review marker that the validator refuses, so the draft cannot be tagged until
+someone has edited it.
+"""
 
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -18,6 +25,11 @@ PLACEHOLDER = re.compile(
     r"<(?:[A-Z][A-Z -]*|model|interface[^<>]*|role|TODO[^<>]*|REPLACE[^<>]*)>",
     re.I,
 )
+REVIEW_MARKER = "<REVIEW AND EDIT THE DRAFT BELOW THEN DELETE THIS LINE>"
+# Lines Markdown could read as a level-one or level-two heading (ATX, or a
+# setext underline) or that a reader could take as a section break. Inside a
+# release section only "###" and deeper headings are accepted.
+SECTION_BOUNDARY = re.compile(r"^ {0,3}(?:#{1,2}(?:[ \t]|$)|=+[ \t]*$|-+[ \t]*$)")
 
 
 def fail(reason: str) -> None:
@@ -49,6 +61,65 @@ def validate_message(data: bytes, subject: Optional[str] = None) -> str:
     if subject is not None and message.split("\n", 1)[0] != subject:
         fail(f"tag message subject must be {subject!r}")
     return message
+
+
+def changelog_section(text: str, version: str) -> list:
+    """Return the release section's body lines exactly as written.
+
+    The changelog has already passed release-guard-release-surfaces.sh, so it
+    is printable ASCII with no fenced code, the release label appears only in
+    its dated heading, and "]:" appears only in the final link-definition
+    footer. A column-zero "## " line therefore starts the next section, and a
+    line containing "]:" starts the footer. Any other line that could start a
+    section is refused rather than interpreted.
+    """
+    heading = f"## [{version}] - "
+    lines = text.split("\n")
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if line.startswith(heading) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", line[len(heading) :])
+    ]
+    if len(starts) != 1:
+        fail(f"CHANGELOG.md needs exactly one dated section for {version}")
+    body = []
+    for line in lines[starts[0] + 1 :]:
+        if line.startswith("## ") or "]:" in line:
+            break
+        body.append(line)
+    for line in body:
+        if SECTION_BOUNDARY.match(line):
+            fail(
+                f"CHANGELOG.md section for {version} has a line that could start another section; "
+                "use '## [x.y.z] - YYYY-MM-DD' headings and '###' or deeper inside a section"
+            )
+    while body and not body[0].strip():
+        body.pop(0)
+    while body and not body[-1].strip():
+        body.pop()
+    if not body:
+        fail(f"CHANGELOG.md section for {version} is empty")
+    return body
+
+
+def draft(root: Path, tag: str) -> bytes:
+    """Draft a message from the changelog section, copied without reformatting."""
+    guard = root / "scripts" / "release-guard-release-surfaces.sh"
+    if subprocess.run([str(guard)], cwd=root, stdin=subprocess.DEVNULL).returncode != 0:
+        fail("CHANGELOG.md must pass the release-surface guard before a message is drafted")
+    try:
+        changelog = (root / "CHANGELOG.md").read_bytes().decode("ascii")
+    except (OSError, UnicodeError):
+        fail("CHANGELOG.md must be a readable printable-ASCII file")
+    summary = "\n".join(changelog_section(changelog, tag[1:]))
+    return (
+        f"{subject_for(tag)}\n\n"
+        f"{REVIEW_MARKER}\n\n"
+        f"{summary}\n\n"
+        "Role: <role>\n"
+        "Co-authored-by: <model> <noreply@3leaps.net>\n"
+        "Committer-of-Record: @3leapsdave\n"
+    ).encode("utf-8")
 
 
 def message_dir(root: Path, tag: str) -> Path:
@@ -87,16 +158,10 @@ def prepare() -> None:
     tag = os.environ.get("STRUCTCORPUS_RELEASE_TAG", "")
     if tag != f"v{(root / 'VERSION').read_text().strip()}":
         fail("release tag must match VERSION")
+    skeleton = draft(root, tag)
     directory = message_dir(root, tag)
 
     file = directory / f"{tag.replace('/', '__')}.txt"
-    skeleton = (
-        f"{subject_for(tag)}\n\n"
-        "<SUMMARY OF THE RELEASE>\n\n"
-        "Role: <role>\n"
-        "Co-authored-by: <model> <noreply@3leaps.net>\n"
-        "Committer-of-Record: @3leapsdave\n"
-    ).encode("utf-8")
     try:
         descriptor = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     except FileExistsError:
