@@ -1,0 +1,42 @@
+# yamllint disable rule:document-start
+# yamllint disable rule:truthy
+name: Public surface
+on:
+  pull_request:
+    # edited reruns the scan when the pull-request title or body changes.
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  surface-scan:
+    name: Public-surface scan (built-in baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        # yamllint disable-line rule:line-length
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install checksum-pinned limensafe
+        run: |
+          set -euo pipefail
+          bin="$(./scripts/install-limensafe.sh "$RUNNER_TEMP/limensafe")"
+          echo "STRUCTCORPUS_LIMENSAFE_BIN=$bin" >> "$GITHUB_ENV"
+      - name: Scan tree, commits, pull-request text and branch name
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          STRUCTCORPUS_SURFACE_BASE: ${{ github.event.pull_request.base.sha }}
+          # yamllint disable-line rule:line-length
+          STRUCTCORPUS_SURFACE_BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          pr_text="$RUNNER_TEMP/pr-text.md"
+          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > "$pr_text"
+          STRUCTCORPUS_SURFACE_PR_TEXT="$pr_text" make surface-scan-ci

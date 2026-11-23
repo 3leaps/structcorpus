@@ -1,0 +1,54 @@
+# yamllint disable rule:document-start
+# yamllint disable rule:truthy
+name: Verify release tag
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  verify-tag:
+    # Checks a published version tag against the release identity committed in
+    # the tagged commit: the public pin and both fingerprint anchors under the
+    # digest-pinned designated checker, a good signature by the pinned signing
+    # subkey with the committed tagger, and GitHub's verification. A green run
+    # is a consistency signal, not release authorization.
+    name: Signed tag matches the committed pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the event commit
+        # yamllint disable-line rule:line-length
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Bind to the triggering tag before installing anything
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EVENT_AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          object="$(./scripts/release-ci-verify-tag.sh bind)"
+          echo "TAG_OBJECT=$object" >> "$GITHUB_ENV"
+      - name: Install digest-pinned decernor
+        run: |
+          set -euo pipefail
+          tool_dir="$(mktemp -d "$RUNNER_TEMP/decernor.XXXXXX")"
+          bin="$(./scripts/release-fetch-decernor.sh linux_amd64 "$tool_dir")"
+          echo "STRUCTCORPUS_DECERNOR_BIN=$bin" >> "$GITHUB_ENV"
+      - name: Verify the bound tag against the pin in its commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EVENT_AFTER: ${{ github.event.after }}
+        run: ./scripts/release-ci-verify-tag.sh verify

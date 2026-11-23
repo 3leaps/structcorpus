@@ -19,8 +19,8 @@ writes a small driver that runs its own API against a pinned corpus release.
   streams can be checked against any engine. Value trees, budgets, and
   resource accounting appear only under a named, versioned profile. See
   [DDR-0002](docs/decisions/DDR-0002-format-events-and-profile-expectations.md).
-- **Byte-exact fixtures.** Git never rewrites line endings under `fixtures/`
-  or `expected/`. See
+- **Byte-exact fixtures.** Git never rewrites line endings under `fixtures/`,
+  `expected/`, or the case shards under `manifests/`. See
   [DDR-0001](docs/decisions/DDR-0001-byte-exact-fixture-storage.md).
 - **Nothing to install beyond `python3`.** The tools use only the Python 3.9+
   standard library; there is no package manager and no virtual environment.
@@ -65,18 +65,29 @@ are defined in
 [DDR-0003](docs/decisions/DDR-0003-case-record-and-value-notation.md) and
 `schemas/`.
 
-`list` will arrive with the recipe ladders. See [PDR-0001](docs/decisions/PDR-0001-staged-releases.md) for the
-release stages.
+See [PDR-0001](docs/decisions/PDR-0001-staged-releases.md) for the release
+stages.
 
 ## Status
 
-Pre-release foundation. No cases have shipped yet. Decision records are
-`Proposed`. Coverage is tracked in [docs/coverage.md](docs/coverage.md).
+YAML 1.2.2 cases and recipes ship from `v0.1.0`; JSON and XML remain
+reserved. Coverage is tracked in [docs/coverage.md](docs/coverage.md), and
+changes in [CHANGELOG.md](CHANGELOG.md).
+
+## Releases
+
+Releases are signed annotated Git tags; nothing else is published. The
+release identity, the explicit tag input, the pre-tag gate, and the CI check of
+every published tag are described in
+[PDR-0003](docs/decisions/PDR-0003-signed-tag-releases.md). The maintainer
+procedure is [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
 ## Consuming
 
 Pin a commit or release, together with its content hashes and the profile
-revision. Never track `main`.
+revision. Never track `main`. Releases are signed annotated tags; verify them
+against the key committed in the tagged commit as described in
+[docs/security/README.md](docs/security/README.md).
 
 ## License
 
