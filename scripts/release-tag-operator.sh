@@ -16,7 +16,7 @@ cd "$root"
 # Check the sole tag input, and refuse the generic alias, before an optional
 # loader can use either to select a cut.
 # shellcheck source=scripts/release-guard-tag-input.sh
-source "$(dirname "${BASH_SOURCE[0]}")/release-guard-tag-input.sh"
+source "$root/scripts/release-guard-tag-input.sh"
 release_guard_tag_input || exit 1
 [[ "$STRUCTCORPUS_RELEASE_TAG" == "v$(cat VERSION)" ]] || {
   echo 'error: release tag must match VERSION' >&2

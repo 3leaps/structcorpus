@@ -20,50 +20,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout the event commit
         # yamllint disable-line rule:line-length
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Bind to the triggering tag before installing anything
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EVENT_AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          object="$(./scripts/release-ci-verify-tag.sh bind)"
+          echo "TAG_OBJECT=$object" >> "$GITHUB_ENV"
       - name: Install digest-pinned decernor
         run: |
           set -euo pipefail
           tool_dir="$(mktemp -d "$RUNNER_TEMP/decernor.XXXXXX")"
           bin="$(./scripts/release-fetch-decernor.sh linux_amd64 "$tool_dir")"
           echo "STRUCTCORPUS_DECERNOR_BIN=$bin" >> "$GITHUB_ENV"
-      - name: Verify the tag against the pin in its own commit
+      - name: Verify the bound tag against the pin in its commit
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
-            echo "error: $TAG is not a canonical version tag" >&2
-            exit 1
-          }
-          ref_json="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
-          [[ "$(jq -r '.object.type // empty' <<< "$ref_json")" == tag ]] || {
-            echo "error: $TAG is not an annotated tag" >&2
-            exit 1
-          }
-          object="$(jq -r '.object.sha // empty' <<< "$ref_json")"
-          [[ "$object" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "error: $TAG has no valid tag object" >&2
-            exit 1
-          }
-          git fetch --quiet --no-tags --force origin "refs/tags/$TAG:refs/tags/$TAG"
-          [[ "$(git rev-parse "refs/tags/$TAG")" == "$object" ]] || {
-            echo "error: $TAG moved while it was being verified" >&2
-            exit 1
-          }
-          # Pin, anchors, signing subkey and tagger identity are read from the
-          # tagged commit; the anchors are checked with the pinned decernor.
-          STRUCTCORPUS_RELEASE_TAG="$TAG" ./scripts/verify-pinned-tag.sh --published
-          gh api "repos/$GITHUB_REPOSITORY/git/tags/$object" |
-            jq -e --arg tag "$TAG" \
-              '.tag == $tag and .verification.verified == true and .verification.reason == "valid"' > /dev/null || {
-            echo "error: GitHub does not report $TAG verified" >&2
-            exit 1
-          }
-          echo "[ok] $TAG ($object) matches the pin in its commit and GitHub reports it verified"
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EVENT_AFTER: ${{ github.event.after }}
+        run: ./scripts/release-ci-verify-tag.sh verify

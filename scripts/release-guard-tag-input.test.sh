@@ -67,6 +67,15 @@ refused 'generic RELEASE_TAG alias is forbidden' env RELEASE_TAG= STRUCTCORPUS_R
   exit 1
 }
 
+# Relative invocation: from scripts/ and from outside the repository root.
+repo_name="$(basename "$root")"
+for script in release-preflight.sh release-verify-tag.sh release-verify-remote-tag.sh \
+  release-verify-published-tag.sh verify-pinned-tag.sh release-tag.sh release-push-tag.sh \
+  release-tag-operator.sh; do
+  refused 'generic RELEASE_TAG alias is forbidden' bash -c 'cd "$1/scripts" && exec env RELEASE_TAG= STRUCTCORPUS_RELEASE_TAG="$2" "./$3" prepare-message' _ "$root" "$good" "$script"
+  refused 'generic RELEASE_TAG alias is forbidden' bash -c 'cd "$1/.." && exec env RELEASE_TAG= STRUCTCORPUS_RELEASE_TAG="$2" "./$4/scripts/$3" prepare-message' _ "$root" "$good" "$script" "$repo_name"
+done
+
 # The operator refuses an alias before its optional loader runs, and again if
 # the loader itself sets one.
 printf 'touch %q\n' "$scratch/loader-ran" >"$scratch/loader.sh"

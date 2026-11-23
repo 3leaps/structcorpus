@@ -1,3 +1,4 @@
+release-ci-verify-tag
 release-decernor
 release-fetch-decernor
 release-gh

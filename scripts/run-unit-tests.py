@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Run the unit tests under TEST_DIR and fail unless at least one test ran.
+"""Run the unit tests under TEST_DIR; fail unless at least one test body ran.
 
 Equivalent to ``python3 -m unittest discover -s TEST_DIR`` from the current
-directory, but the exit status also requires a non-zero test count and no
-discovery errors: on Python 3.9 to 3.11, unittest exits 0 when discovery finds
+directory, but the exit status also requires at least one executed (not skipped) test
+and no discovery errors: on Python 3.9 to 3.11, unittest exits 0 when discovery finds
 no tests. Standard library only (Python 3.9+).
 
 Usage: run-unit-tests.py TEST_DIR
@@ -27,8 +27,9 @@ def main(argv: list) -> int:
     if loader.errors:
         print(f"error: {len(loader.errors)} test module(s) failed to load", file=sys.stderr)
         return 1
-    if result.testsRun == 0:
-        print("error: no tests were discovered", file=sys.stderr)
+    executed = result.testsRun - len(result.skipped)
+    if executed <= 0:
+        print("error: no test was executed (none discovered, or all skipped)", file=sys.stderr)
         return 1
     return 0 if result.wasSuccessful() else 1
 

@@ -218,24 +218,26 @@ done
   echo 'error: no python3 for the unit-test gate controls' >&2
   exit 1
 }
-for case in pass zero fail importerr; do mkdir -p "$scratch/ut/$case/tests"; done
+for case in pass zero fail importerr skipped mixed; do mkdir -p "$scratch/ut/$case/tests"; done
 printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n' >"$scratch/ut/pass/tests/test_a.py"
 printf '# no tests\n' >"$scratch/ut/zero/tests/test_empty.py"
 printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_bad(self):\n        self.fail("x")\n' >"$scratch/ut/fail/tests/test_a.py"
 printf 'import not_a_module_for_this_control\n' >"$scratch/ut/importerr/tests/test_a.py"
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    @unittest.skip("x")\n    def test_skip(self):\n        pass\n' >"$scratch/ut/skipped/tests/test_a.py"
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n\n    @unittest.skip("x")\n    def test_skip(self):\n        pass\n' >"$scratch/ut/mixed/tests/test_a.py"
 for py in "${pythons[@]}"; do
   version="$("$py" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-  for case in pass zero fail importerr; do
+  for case in pass zero fail importerr skipped mixed; do
     rc=0
     (cd "$scratch/ut/$case" && "$py" -B "$runner" tests) >/dev/null 2>&1 || rc=$?
     want=1
-    [[ "$case" == pass ]] && want=0
+    [[ "$case" == pass || "$case" == mixed ]] && want=0
     [[ "$rc" == "$want" ]] || {
       echo "error: unit-test gate on Python $version: $case exited $rc, expected $want" >&2
       exit 1
     }
   done
-  echo "[ok] unit-test gate on Python $version: passes one test; refuses zero tests, a failure and an import error"
+  echo "[ok] unit-test gate on Python $version: passes one test and pass+skip; refuses zero tests, all skipped, a failure and an import error"
 done
 
 echo '[ok] preflight reaches its final gate and fails closed when it fails'
