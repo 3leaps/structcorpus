@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- `make release-prepare-tag-message` drafts a new tag message from the release's dated `CHANGELOG.md` section, copied as written after the changelog passes its release guard. The draft carries a review-marker line that tagging refuses until it is deleted.
+
 ## [0.1.0] - 2026-11-23
 
 First signed release.

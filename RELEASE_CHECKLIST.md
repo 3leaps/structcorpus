@@ -116,7 +116,12 @@ line), even to an empty value, so `unset RELEASE_TAG` first.
       preflight, content-check, dates check, clean-clone test outside the home
       directory, and `make check`): `make release-preflight`
 - [ ] Prepare and review the external tag message:
-      `make release-prepare-tag-message`
+      `make release-prepare-tag-message`. A new message is drafted from the
+      dated `CHANGELOG.md` section, copied as written once the changelog
+      passes `make release-guard-release-surfaces`. Edit the draft into the
+      release summary, delete the review-marker line, and complete the
+      attribution footer; tagging refuses the message until all three are
+      done. An existing message is never overwritten.
 - [ ] Create and verify the local signed tag: `make release-tag`
 - [ ] Verify the local tag against the committed pin: `make release-verify-tag`
 - [ ] Publish and verify the tag (local signature against the committed pin,

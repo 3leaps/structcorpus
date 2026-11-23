@@ -84,14 +84,14 @@ Verification instructions for consumers are in
    re-read last. A passing run is consistency evidence. The maintainer's
    signature is the release authorization.
 
-5. **The first tag run is the evidence for the event shape.** GitHub's push
-   payload documentation describes `after` as a commit. Reported runs for
-   annotated-tag pushes show it carrying the tag object. The first release's
-   workflow run settles which applies here. Version tags are immutable by
-   project policy, so if that run fails because the event did not name the tag
-   object, the tag is not moved or re-signed and stays unverified by CI. The
-   binding is corrected in a reviewed change, and the next patch version is
-   tagged.
+5. **The event shape is observed, and a change to it fails closed.** GitHub's
+   push payload documentation describes `after` as a commit. The workflow run
+   for the v0.1.0 tag push observed `after` carrying the annotated tag object
+   and `github.sha` carrying the tagged commit, and the run passed. If a later
+   push event names only a commit, the run fails. Version tags are immutable
+   by project policy, so such a tag is not moved or re-signed and stays
+   unverified by CI. The binding is corrected in a reviewed change, and the
+   next patch version is tagged.
 
 6. **Repository settings back the tag.** A tag ruleset restricts creating,
    updating, and deleting `refs/tags/v*` to organization administrators, which
@@ -120,8 +120,8 @@ Verification instructions for consumers are in
   tagged commit, so it shows that the tag, the identity committed with it, and
   GitHub agree. It does not replace independently establishing the expected
   signing key (docs/security/README.md).
-- A failed first-run event binding costs a patch version, not a moved tag
-  (decision 5).
+- A failed event binding costs a patch version, not a moved tag (decision
+  5).
 
 ## Alternatives considered
 
