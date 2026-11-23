@@ -37,13 +37,17 @@ Verification instructions for consumers are in
    or newer. It is bound by an absolute path in the ceremony and by a
    committed archive digest in CI (`config/release/decernor-ci-sha256.txt`).
 
-2. **The release tag is an explicit input.** Every tag-consuming script and
-   `make` target takes the tag only from `STRUCTCORPUS_RELEASE_TAG`. Nothing is
-   derived from `VERSION`. The generic `RELEASE_TAG` is refused whenever it is
-   set, from the environment, the `make` command line, or a makefile, and even
-   when it is empty. The check runs before any loader, fetch, message,
-   GitHub call, or tag operation
-   (`scripts/release-guard-tag-input.sh`).
+2. **The release tag is an explicit input.** Every maintainer ceremony
+   entrypoint (preflight, message preparation, tagging, push, and the local,
+   remote and published-tag verifiers) and every tag-consuming `make` target
+   takes the tag only from `STRUCTCORPUS_RELEASE_TAG`. Nothing is derived from
+   `VERSION`. The generic `RELEASE_TAG` is refused whenever it is set, from the
+   environment, the `make` command line, or a makefile, and even when it is
+   empty. The check runs before any loader, fetch, message, GitHub call, or
+   tag operation (`scripts/release-guard-tag-input.sh`). Two interfaces take
+   the tag another way: the CI check reads it from the push event (decision
+   4), and the advisory `scripts/release-inspect-tag-ruleset.sh` takes it as an
+   argument from the guarded ceremony scripts.
 
 3. **The pre-tag gate runs on the merged main commit** (`make
    release-preflight`). It checks:
@@ -60,7 +64,7 @@ Verification instructions for consumers are in
    The unit tests run through `scripts/run-unit-tests.py`, which keeps
    `unittest` semantics but fails a vacuous run. The run must start at least
    one test invocation that does not end as a whole-test skip, discovery must
-   report no errors, and every test must pass. Subtest, class, and module
+   report no errors, and `unittest` must report success. Subtest, class, and module
    skips neither count nor cancel an invocation. A test method that is itself
    a generator, an async generator, or (outside `IsolatedAsyncioTestCase`) a
    coroutine is refused, because `unittest` would report it passed without
@@ -83,19 +87,24 @@ Verification instructions for consumers are in
 5. **The first tag run is the evidence for the event shape.** GitHub's push
    payload documentation describes `after` as a commit. Reported runs for
    annotated-tag pushes show it carrying the tag object. The first release's
-   workflow run settles which applies here. Tags and releases are immutable,
-   so if that run fails because the event did not name the tag object, the tag
-   is not moved or re-signed. The binding is corrected in a reviewed change,
-   and the next patch version is tagged.
+   workflow run settles which applies here. Version tags are immutable by
+   project policy, so if that run fails because the event did not name the tag
+   object, the tag is not moved or re-signed and stays unverified by CI. The
+   binding is corrected in a reviewed change, and the next patch version is
+   tagged.
 
 6. **Repository settings back the tag.** A tag ruleset restricts creating,
-   updating, and deleting `refs/tags/v*`, and immutable releases are enabled.
-   `make release-github-preflight` checks both before tagging.
+   updating, and deleting `refs/tags/v*` to organization administrators, which
+   is the GitHub control for these tags because no GitHub Release is
+   published. Immutable releases are also enabled; that lock applies only to a
+   published GitHub Release. `make release-github-preflight` checks both,
+   including the ruleset's bypass list, before tagging.
 
 7. **No public-surface scan configuration is kept in the repository.** The
    scan builds its baseline configuration in a temporary directory at run
-   time. A maintainer catalog, if any, is supplied from outside the repository
-   for release-scope scans. CI runs the built-in baseline only.
+   time. The release-scope scan in `make release-preflight` requires a
+   maintainer catalog, supplied from outside the repository; the generated
+   baseline alone does not satisfy it. CI runs the built-in baseline only.
 
 ## Consequences
 
