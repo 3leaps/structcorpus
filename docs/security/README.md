@@ -44,4 +44,5 @@ signature against the pinned signing subkey and tagger identity read from the
 tagged commit, and requires GitHub to report that tag object verified. A passing run is consistency
 evidence, not release authorization: the maintainer's signature on the tag is
 the authorization, and the expected primary still has to be established
-independently as described above.
+independently as described above. The gates and their limits are recorded in
+[PDR-0003](../decisions/PDR-0003-signed-tag-releases.md).

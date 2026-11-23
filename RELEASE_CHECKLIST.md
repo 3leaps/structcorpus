@@ -124,7 +124,11 @@ line), even to an empty value, so `unset RELEASE_TAG` first.
       the tag ruleset but does not enforce it; `make release-preflight` does,
       so rerun it if anything changed since.
 - [ ] The `Verify release tag` workflow run for the tag passed (consistency
-      evidence, not authorization)
+      evidence, not authorization). If it fails because the push event did
+      not name the tag object, do not move, delete, or re-sign the tag:
+      correct the binding in a reviewed change and release the next patch
+      version ([PDR-0003](docs/decisions/PDR-0003-signed-tag-releases.md),
+      decision 5).
 - [ ] Re-verify the published tag from a clean checkout:
       `make release-verify-published-tag` (and
       `make release-verify-remote-tag` to compare local and remote objects)

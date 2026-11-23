@@ -74,6 +74,14 @@ YAML 1.2.2 cases and recipes ship from `v0.1.0`; JSON and XML remain
 reserved. Coverage is tracked in [docs/coverage.md](docs/coverage.md), and
 changes in [CHANGELOG.md](CHANGELOG.md).
 
+## Releases
+
+Releases are signed annotated Git tags; nothing else is published. The
+release identity, the explicit tag input, the pre-tag gate, and the CI check of
+every published tag are described in
+[PDR-0003](docs/decisions/PDR-0003-signed-tag-releases.md). The maintainer
+procedure is [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+
 ## Consuming
 
 Pin a commit or release, together with its content hashes and the profile

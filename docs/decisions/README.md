@@ -38,6 +38,8 @@ and its [normative catalog](https://github.com/3leaps/crucible/blob/fc6c49a3a1dd
 | [SecDR-0002](SecDR-0002-bounded-execution-containment.md) | Bounded execution and memory containment for hostile cases | Proposed |
 | [PDR-0001](PDR-0001-staged-releases.md) | Staged releases, each with its own acceptance list | Proposed |
 | [PDR-0002](PDR-0002-goneat-maintainer-toolchain.md) | goneat as the maintainer format, lint, and schema toolchain | Proposed |
+| [PDR-0003](PDR-0003-signed-tag-releases.md) | Signed-tag releases and their verification gates | Proposed |
 
 Reviewers: any change that adds or modifies a case is checked against
 SecDR-0001. Any change to execution tooling is checked against SecDR-0002.
+Any change to release tooling or the tag workflow is checked against PDR-0003.

@@ -9,14 +9,12 @@ unittest itself exits 0 when discovery finds no tests.
 Contract. Each test invocation the runner starts counts once (two invocations
 of the same test id count twice) unless that invocation ends as a whole-test
 skip. Skips of subtests, classes or modules, and fixture callbacks, neither
-count nor cancel an invocation. An invocation whose test callable, looked up
-statically when it starts, would return an unrun body fails the run (see
-defers_body: generator and async-generator functions, and coroutines other
-than an IsolatedAsyncioTestCase's own async test method, reached directly or
-through bindings, functools.partial/partialmethod, callable objects or
-FunctionTestCase). Properties and other descriptors are not invoked, so that
-check has no side effects; forms behind them are outside it. Tests are not
-modified.
+count nor cancel an invocation. An invocation whose own test function would
+return an unrun body fails the run: a generator or async-generator test
+method, or a coroutine test method outside an IsolatedAsyncioTestCase (see
+defers_body for the exact scope). Test functions reached through other
+adapters (partial, partialmethod, callable objects, properties, descriptors)
+are outside that check. Tests are not modified.
 
 The gate detects accidental vacuity in the runner's reported lifecycle
 (nothing discovered, everything skipped). It does not prove that arbitrary
@@ -26,7 +24,6 @@ question. Standard library only (Python 3.9+).
 Usage: run-unit-tests.py TEST_DIR
 """
 
-import functools
 import inspect
 import os
 import sys
@@ -35,54 +32,35 @@ import unittest
 
 def _unwrap_binding(target):
     """Unwrap method bindings only (bound method, staticmethod, classmethod)."""
-    while True:
-        if isinstance(target, (staticmethod, classmethod)) or inspect.ismethod(target):
-            target = target.__func__
-        else:
-            return target
-
-
-def _effective_function(target):
-    """Unwrap bindings and the call adapters unittest may invoke through."""
-    for _ in range(16):
-        target = _unwrap_binding(target)
-        if isinstance(target, (functools.partial, functools.partialmethod)):
-            target = target.func
-        elif inspect.isfunction(target) or inspect.isbuiltin(target) or isinstance(target, property):
-            return target
-        elif callable(target):
-            call = inspect.getattr_static(type(target), "__call__", None)
-            if call is None or call is target:
-                return target
-            target = call
-        else:
-            return target
+    while isinstance(target, (staticmethod, classmethod)) or inspect.ismethod(target):
+        target = target.__func__
     return target
 
 
 def defers_body(test):
-    """True when this invocation's test callable returns a body it never runs.
+    """True when this invocation's own test function returns an unrun body.
 
-    The callable is looked up statically when the invocation starts (instance
-    attributes first, so __init__, load_tests or run() rebinding is seen),
-    without invoking properties or other descriptors, so the lookup has no side
-    effects and unittest's own lookup is unchanged. Bindings,
-    functools.partial and partialmethod, callable objects' __call__ and
-    FunctionTestCase are unwrapped. Generator and async-generator functions are
-    deferred; a coroutine function is deferred unless it is the test method
-    itself on an IsolatedAsyncioTestCase. Properties are not resolved.
+    Scope: the test method itself, as declared on the class or set on the
+    instance (looked up statically when the invocation starts, so __init__,
+    load_tests or run() rebinding is seen and no property or descriptor is
+    invoked), or a FunctionTestCase's function, after unwrapping bound
+    methods, staticmethod and classmethod. A generator or async-generator
+    function is deferred; a coroutine function is deferred unless the case is
+    an IsolatedAsyncioTestCase. Anything reached through another adapter
+    (functools.partial or partialmethod, a callable object, a property or
+    other descriptor) is outside this check and left to review.
     """
     if isinstance(test, unittest.FunctionTestCase):
         target = getattr(test, "_testFunc", None)
     else:
         target = inspect.getattr_static(test, test._testMethodName, None)
-    function = _effective_function(target)
+    function = _unwrap_binding(target)
+    if not inspect.isfunction(function):
+        return False
     if inspect.isgeneratorfunction(function) or inspect.isasyncgenfunction(function):
         return True
     if inspect.iscoroutinefunction(function):
-        direct = _unwrap_binding(target)
-        awaited = isinstance(test, unittest.IsolatedAsyncioTestCase) and (inspect.iscoroutinefunction(direct))
-        return not awaited
+        return not isinstance(test, unittest.IsolatedAsyncioTestCase)
     return False
 
 
