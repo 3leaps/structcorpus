@@ -36,6 +36,10 @@ MAX_PATH_CHARS = 200
 BYTE_EXACT_TREES = ("fixtures", "expected")
 BYTE_EXACT_ATTRS = "-text -filter -ident -working-tree-encoding"
 BYTE_EXACT_SHARDS = "/manifests/**/*.jsonl"
+CONVERSION_ATTRS = frozenset({"text", "eol", "crlf", "filter", "ident", "working-tree-encoding"})
+ATTR_MAX_LINE = 1024
+ATTR_LINE_CHARS = re.compile(rb"[\x20-\x7e\t]*")
+ATTR_TOKEN = re.compile(r"[-!][A-Za-z0-9_.][-A-Za-z0-9_.]*|[A-Za-z0-9_.][-A-Za-z0-9_.]*(=\S+)?")
 MAX_SAFE_INT = 2**53 - 1
 FORBIDDEN_DIRS = {"unknown", "pending", "quarantine", "staging", "intake"}
 
@@ -322,22 +326,78 @@ def check_inventory_links(root):
     return errors
 
 
+def check_byte_exact_attributes(data):
+    """Violations of the byte-exact rules in the root .gitattributes bytes.
+
+    Only a strict subset of Git's attribute syntax is accepted, so every accepted line
+    means the same thing to Git: ASCII text, LF line ends (CR only before LF), lines of
+    at most ATTR_MAX_LINE bytes, fields separated by spaces or tabs, whole-line comments,
+    unquoted patterns, no macro definitions, and attribute tokens that are a valid Git
+    attribute name (not a reserved builtin_ name) optionally prefixed with - or !, or
+    followed by =value.
+
+    Each byte-exact pattern needs a line naming exactly that pattern that unsets every
+    conversion attribute, and nothing on that line or any later line may set or
+    unspecify one of them again; later lines in .gitattributes override earlier ones, so
+    line-ending and filter rules for other paths belong before the byte-exact rules.
+    """
+    errors = []
+    required = ["/%s/**" % tree for tree in BYTE_EXACT_TREES] + [BYTE_EXACT_SHARDS]
+    unset = set(BYTE_EXACT_ATTRS.split())
+    rule_line = {}
+    lines = data.split(b"\n")
+    for lineno, raw in enumerate(lines, 1):
+        if raw.endswith(b"\r") and lineno < len(lines):
+            raw = raw[:-1]
+        where = ".gitattributes:%d" % lineno
+        if len(raw) > ATTR_MAX_LINE:
+            errors.append("%s: line is longer than %d bytes" % (where, ATTR_MAX_LINE))
+            continue
+        if not ATTR_LINE_CHARS.fullmatch(raw):
+            errors.append("%s: only printable ASCII, spaces and tabs are allowed" % where)
+            continue
+        fields = raw.decode("ascii").split()
+        if not fields or fields[0].startswith("#"):
+            continue
+        pattern, tokens = fields[0], fields[1:]
+        if pattern.startswith(("[attr]", '"', "!")):
+            errors.append("%s: quoted patterns, negated patterns and macro definitions are not allowed" % where)
+            continue
+        bad = [t for t in tokens if not ATTR_TOKEN.fullmatch(t) or _attr_name(t).startswith("builtin_")]
+        if bad:
+            errors.append("%s: invalid attribute %s" % (where, " ".join(bad)))
+            continue
+        touches = [t for t in tokens if _attr_name(t) in CONVERSION_ATTRS and not t.startswith("-")]
+        if pattern in required and unset <= set(tokens) and not touches:
+            rule_line.setdefault(pattern, lineno)
+        elif touches and rule_line:
+            errors.append(
+                "%s: %s sets %s after a byte-exact rule; move it before line %d"
+                % (where, pattern, " ".join(touches), min(rule_line.values()))
+            )
+    for pattern in required:
+        if pattern not in rule_line:
+            errors.append(".gitattributes: %s must set %s" % (pattern, BYTE_EXACT_ATTRS))
+    return errors
+
+
+def _attr_name(token):
+    return token.lstrip("-!").split("=", 1)[0]
+
+
 def check_repository(root):
     """Return a list of rule violations under root."""
     errors = []
     attrs_path = os.path.join(root, ".gitattributes")
-    attrs = ""
+    attrs = b""
     if os.path.lexists(attrs_path):
         try:
-            attrs = read_checkout_file(root, ".gitattributes").decode("utf-8")
+            attrs = read_checkout_file(root, ".gitattributes")
         except CheckoutPathError as exc:
             errors.append(str(exc))
-    if "%s %s" % (BYTE_EXACT_SHARDS, BYTE_EXACT_ATTRS) not in attrs:
-        errors.append(".gitattributes: %s must set %s" % (BYTE_EXACT_SHARDS, BYTE_EXACT_ATTRS))
+    errors.extend(check_byte_exact_attributes(attrs))
     total = 0
     for tree in BYTE_EXACT_TREES:
-        if "/%s/** %s" % (tree, BYTE_EXACT_ATTRS) not in attrs:
-            errors.append(".gitattributes: /%s/** must set %s" % (tree, BYTE_EXACT_ATTRS))
         top = os.path.join(root, tree)
         if not os.path.isdir(top):
             continue

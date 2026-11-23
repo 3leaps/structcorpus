@@ -19,6 +19,20 @@ SHARD = "manifests/yaml/cases.jsonl"
 TESTFMT = {"dialects": ("yaml-1.2.2",), "inventories": ("cases", "fixtures"), "generated_input_extension": ".yaml"}
 
 
+def _git_checkout_root():
+    """The real path of the git work tree containing REPO (a clone or linked worktree), or None."""
+    if not shutil.which("git"):
+        return None
+    proc = subprocess.run(
+        ["git", "-C", REPO, "rev-parse", "--show-toplevel"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    )
+    if proc.returncode != 0:
+        return None
+    top = proc.stdout.decode("utf-8").strip()
+    same = top and os.path.normcase(os.path.realpath(top)) == os.path.normcase(os.path.realpath(REPO))
+    return REPO if same else None
+
+
 class LayoutRepo(unittest.TestCase):
     """A disposable copy of every registered corpus tree, plus an output parent outside it."""
 
@@ -90,7 +104,7 @@ class TestShippedLayout(LayoutRepo):
             self.assertEqual(formats["yaml"][kind], pattern.format("yaml"))
         self.assertEqual(formats["yaml"]["generated_input_extension"], ".yaml")
 
-    @unittest.skipUnless(shutil.which("git") and os.path.isdir(os.path.join(REPO, ".git")), "needs a git checkout")
+    @unittest.skipUnless(_git_checkout_root() == REPO, "needs this tree to be the top of a git checkout")
     def test_shards_and_aggregate_check_out_byte_exact(self):
         errors = []
         formats = corpus.load_formats(REPO, errors)
