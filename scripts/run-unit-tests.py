@@ -9,20 +9,72 @@ unittest itself exits 0 when discovery finds no tests.
 Contract. Each test invocation the runner starts counts once (two invocations
 of the same test id count twice) unless that invocation ends as a whole-test
 skip. Skips of subtests, classes or modules, and fixture callbacks, neither
-count nor cancel an invocation. Test methods whose bodies plain unittest would
-never run are refused before running: generator and async-generator methods,
-and coroutine methods outside an IsolatedAsyncioTestCase. Tests are not
-modified. The gate guards against accidental vacuity (nothing discovered,
-everything skipped); whether a test asserts anything is a review question.
-Standard library only (Python 3.9+).
+count nor cancel an invocation. An invocation whose callable, as resolved when
+it starts, would return an unrun body fails the run: generator and
+async-generator functions, and coroutine functions outside an
+IsolatedAsyncioTestCase, reached through bound methods, functools.partial or
+partialmethod, callable objects, or FunctionTestCase. Other dynamic forms are
+outside that check. Tests are not modified.
+
+The gate detects accidental vacuity in the runner's reported lifecycle
+(nothing discovered, everything skipped). It does not prove that arbitrary
+test code exercised anything; whether a test asserts anything is a review
+question. Standard library only (Python 3.9+).
 
 Usage: run-unit-tests.py TEST_DIR
 """
 
+import functools
 import inspect
 import os
 import sys
 import unittest
+
+
+def _effective_function(target):
+    """Unwrap the adapters unittest commonly invokes through."""
+    for _ in range(16):
+        if isinstance(target, (staticmethod, classmethod)):
+            target = target.__func__
+        elif isinstance(target, functools.partial):
+            target = target.func
+        elif inspect.ismethod(target):
+            target = target.__func__
+        elif inspect.isfunction(target) or inspect.isbuiltin(target):
+            return target
+        elif callable(target):
+            call = inspect.getattr_static(type(target), "__call__", None)
+            if call is None or call is target:
+                return target
+            target = call
+        else:
+            return target
+    return target
+
+
+def defers_body(test):
+    """True when the callable this invocation will run returns an unrun body.
+
+    Inspects the callable as resolved at the start of the invocation (after
+    any instance, load_tests or run() rebinding), unwrapping bound methods,
+    functools.partial and partialmethod, callable objects' __call__, and
+    FunctionTestCase. Generator and async-generator functions, and coroutine
+    functions outside IsolatedAsyncioTestCase, are deferred. Other dynamic
+    forms are outside this check. Never alters what runs.
+    """
+    if isinstance(test, unittest.FunctionTestCase):
+        target = getattr(test, "_testFunc", None)
+    else:
+        try:
+            target = getattr(test, test._testMethodName)
+        except Exception:
+            return False
+    function = _effective_function(target)
+    if inspect.isgeneratorfunction(function) or inspect.isasyncgenfunction(function):
+        return True
+    if inspect.iscoroutinefunction(function):
+        return not isinstance(test, unittest.IsolatedAsyncioTestCase)
+    return False
 
 
 class CountingResult(unittest.TextTestResult):
@@ -31,12 +83,15 @@ class CountingResult(unittest.TextTestResult):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.executed = 0
+        self.deferred = []
         self._current = None
         self._current_skipped = False
 
     def startTest(self, test):
         self._current = test
         self._current_skipped = False
+        if defers_body(test):
+            self.deferred.append(test.id())
         super().startTest(test)
 
     def addSkip(self, test, reason):
@@ -53,22 +108,6 @@ class CountingResult(unittest.TextTestResult):
         super().stopTest(test)
 
 
-def deferred_bodies(suite):
-    """Yield ids of tests whose method plain unittest would not actually run."""
-    for test in suite:
-        if isinstance(test, unittest.TestSuite):
-            yield from deferred_bodies(test)
-            continue
-        if not isinstance(test, unittest.TestCase):
-            continue
-        method = inspect.getattr_static(type(test), getattr(test, "_testMethodName", ""), None)
-        method = getattr(method, "__func__", method)
-        if inspect.isgeneratorfunction(method) or inspect.isasyncgenfunction(method):
-            yield test.id()
-        elif inspect.iscoroutinefunction(method) and not isinstance(test, unittest.IsolatedAsyncioTestCase):
-            yield test.id()
-
-
 def main(argv: list) -> int:
     if len(argv) != 2:
         print("usage: run-unit-tests.py TEST_DIR", file=sys.stderr)
@@ -81,11 +120,11 @@ def main(argv: list) -> int:
     if loader.errors:
         print(f"error: {len(loader.errors)} test module(s) failed to load", file=sys.stderr)
         return 1
-    deferred = sorted(set(deferred_bodies(suite)))
-    if deferred:
-        print("error: test methods unittest would not run: " + ", ".join(deferred), file=sys.stderr)
-        return 1
     result = unittest.TextTestRunner(verbosity=1, resultclass=CountingResult).run(suite)
+    if result.deferred:
+        names = ", ".join(sorted(set(result.deferred)))
+        print(f"error: test bodies unittest would not run: {names}", file=sys.stderr)
+        return 1
     if result.executed == 0:
         print("error: no test was executed (none discovered, or all skipped)", file=sys.stderr)
         return 1

@@ -15,9 +15,11 @@ mk() { # mk CASE CONTENT [SECOND_FILE_CONTENT]
   printf "$2" >"$scratch/$1/tests/test_a.py"
   [[ -z "${3:-}" ]] || printf "$3" >"$scratch/$1/tests/test_b.py"
 }
-accept=(pass mixed subskip classskip modskip xfail asyncpass dupid roprop customrun)
+accept=(pass mixed subskip classskip modskip xfail asyncpass dupid roprop customrun
+  initoverride loadoverride runoverride)
 refuse=(zero allskip onlyclassskip setupsub bodysub cleanupsub fixturecall modfixturecall
-  asyncfail gen agen corosync fail subfail usucc importerr)
+  asyncfail gen agen corosync fail subfail usucc importerr
+  propgen instcoro callobj functioncase partialgen)
 mk pass "$P"
 mk mixed "${P}\n    @unittest.skip(\"x\")\n    def test_s(self):\n        pass\n"
 mk subskip "${P}\n    def test_sub(self):\n        with self.subTest(i=1):\n            self.skipTest(\"x\")\n"
@@ -44,6 +46,14 @@ mk fail "${H}class T(unittest.TestCase):\n    def test_x(self):\n        self.fa
 mk subfail "${H}class T(unittest.TestCase):\n    def test_sub(self):\n        with self.subTest(i=1):\n            self.fail(\"x\")\n"
 mk usucc "${H}class T(unittest.TestCase):\n    @unittest.expectedFailure\n    def test_x(self):\n        pass\n"
 mk importerr 'import not_a_module_for_this_control\n'
+mk initoverride "${H}class T(unittest.TestCase):\n    def __init__(self, name):\n        super().__init__(name)\n        self.test_g = self._sync\n\n    def _sync(self):\n        pass\n\n    def test_g(self):\n        yield 1\n"
+mk loadoverride "${H}class T(unittest.TestCase):\n    def _sync(self):\n        pass\n\n    async def test_c(self):\n        pass\n\n\ndef load_tests(loader, tests, pattern):\n    t = T(\"test_c\")\n    t.test_c = t._sync\n    return unittest.TestSuite([t])\n"
+mk runoverride "${H}class T(unittest.TestCase):\n    def run(self, result=None):\n        self.test_g = self._sync\n        return super().run(result)\n\n    def _sync(self):\n        pass\n\n    def test_g(self):\n        yield 1\n"
+mk propgen "${H}class T(unittest.TestCase):\n    def _gen(self):\n        yield 1\n\n    @property\n    def test_p(self):\n        return self._gen\n\n\ndef load_tests(loader, tests, pattern):\n    return unittest.TestSuite([T(\"test_p\")])\n"
+mk instcoro "${H}class T(unittest.TestCase):\n    def __init__(self, name):\n        super().__init__(name)\n        self.test_c = self._coro\n\n    async def _coro(self):\n        self.fail(\"x\")\n\n    def test_c(self):\n        pass\n"
+mk callobj "${H}class G:\n    def __call__(self):\n        yield 1\n\n\nclass T(unittest.TestCase):\n    test_o = G()\n\n\ndef load_tests(loader, tests, pattern):\n    return unittest.TestSuite([T(\"test_o\")])\n"
+mk functioncase "${H}def gen():\n    yield 1\n\n\ndef load_tests(loader, tests, pattern):\n    return unittest.TestSuite([unittest.FunctionTestCase(gen)])\n"
+mk partialgen "import functools\n${H}class T(unittest.TestCase):\n    def _gen(self, n):\n        yield n\n\n    test_p = functools.partialmethod(_gen, 1)\n"
 
 pythons=()
 for candidate in "$(command -v python3)" /usr/bin/python3; do
