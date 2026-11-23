@@ -66,11 +66,13 @@ refused() { # refused PATTERN MODE [ENV...]
   }
 }
 
-# bind: positive controls (event reports the tag object, or the commit).
+# bind: positive control (the event names the pushed tag object).
 reset_fixture
 ci bind
 [[ "$(cat "$scratch/out")" == "$object" ]]
-after="$c1" ci bind
+# An event that names only the commit cannot bind the original object: refuse,
+# both for the unchanged tag and after a same-commit replacement.
+after="$c1" refused 'names only the commit' bind
 # bind: refusals.
 refused 'canonical' bind TAG=1.2.3
 refused 'event ref is not this tag' bind EVENT_REF=refs/tags/v9.9.9
@@ -92,6 +94,7 @@ sleep 1
 g -C "$src" tag -f -a -m 'Release 1.2.3 again' v1.2.3 "$c1" >/dev/null # replaced, same commit
 g -C "$src" push -q -f "$origin" refs/tags/v1.2.3
 after="$old" refused 'replaced after the triggering push' bind
+after="$c1" refused 'names only the commit' bind
 unset after
 
 # verify: positive control, then each refusal.
@@ -116,4 +119,4 @@ reset_fixture
 ci bind
 refused 'moved during verification' verify TAG_OBJECT="$object" FIXTURE_MOVE_DURING="$c2"
 
-echo '[ok] CI tag verification is bound to the event and refuses lightweight, moved, replaced and unverified tags'
+echo '[ok] CI tag verification is bound to the event tag object; refuses commit-only events and lightweight, moved, replaced and unverified tags'

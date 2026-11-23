@@ -218,26 +218,32 @@ done
   echo 'error: no python3 for the unit-test gate controls' >&2
   exit 1
 }
-for case in pass zero fail importerr skipped mixed; do mkdir -p "$scratch/ut/$case/tests"; done
+for case in pass zero fail importerr skipped mixed subskip classskip modskip onlyclassskip subfail; do mkdir -p "$scratch/ut/$case/tests"; done
 printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n' >"$scratch/ut/pass/tests/test_a.py"
 printf '# no tests\n' >"$scratch/ut/zero/tests/test_empty.py"
 printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_bad(self):\n        self.fail("x")\n' >"$scratch/ut/fail/tests/test_a.py"
 printf 'import not_a_module_for_this_control\n' >"$scratch/ut/importerr/tests/test_a.py"
 printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    @unittest.skip("x")\n    def test_skip(self):\n        pass\n' >"$scratch/ut/skipped/tests/test_a.py"
 printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n\n    @unittest.skip("x")\n    def test_skip(self):\n        pass\n' >"$scratch/ut/mixed/tests/test_a.py"
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n\n    def test_sub(self):\n        with self.subTest(i=1):\n            self.skipTest("x")\n' >"$scratch/ut/subskip/tests/test_a.py"
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n\n\nclass S(unittest.TestCase):\n    @classmethod\n    def setUpClass(cls):\n        raise unittest.SkipTest("x")\n\n    def test_never(self):\n        pass\n' >"$scratch/ut/classskip/tests/test_a.py"
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n' >"$scratch/ut/modskip/tests/test_a.py"
+printf 'import unittest\n\n\ndef setUpModule():\n    raise unittest.SkipTest("x")\n\n\nclass S(unittest.TestCase):\n    def test_never(self):\n        pass\n' >"$scratch/ut/modskip/tests/test_b.py"
+printf 'import unittest\n\n\nclass S(unittest.TestCase):\n    @classmethod\n    def setUpClass(cls):\n        raise unittest.SkipTest("x")\n\n    def test_never(self):\n        pass\n' >"$scratch/ut/onlyclassskip/tests/test_a.py"
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_sub(self):\n        with self.subTest(i=1):\n            self.fail("x")\n' >"$scratch/ut/subfail/tests/test_a.py"
 for py in "${pythons[@]}"; do
   version="$("$py" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-  for case in pass zero fail importerr skipped mixed; do
+  for case in pass zero fail importerr skipped mixed subskip classskip modskip onlyclassskip subfail; do
     rc=0
     (cd "$scratch/ut/$case" && "$py" -B "$runner" tests) >/dev/null 2>&1 || rc=$?
     want=1
-    [[ "$case" == pass || "$case" == mixed ]] && want=0
+    case "$case" in pass | mixed | subskip | classskip | modskip) want=0 ;; esac
     [[ "$rc" == "$want" ]] || {
       echo "error: unit-test gate on Python $version: $case exited $rc, expected $want" >&2
       exit 1
     }
   done
-  echo "[ok] unit-test gate on Python $version: passes one test and pass+skip; refuses zero tests, all skipped, a failure and an import error"
+  echo "[ok] unit-test gate on Python $version: accepts a pass with method, subtest, class or module skips; refuses zero tests, all or class-only skipped, a failure, a failing subtest and an import error"
 done
 
 echo '[ok] preflight reaches its final gate and fails closed when it fails'

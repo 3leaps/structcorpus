@@ -38,9 +38,10 @@ On every pushed `v*` tag, the read-only workflow
 [`tag-verify.yml`](../../.github/workflows/tag-verify.yml) installs Decernor
 from the archive digest committed in
 [`config/release/decernor-ci-sha256.txt`](../../config/release/decernor-ci-sha256.txt),
-checks the pin against both anchors, verifies the tag signature against the
-pinned signing subkey and tagger identity read from the tagged commit, and
-requires GitHub to report the tag verified. A passing run is consistency
+binds to the tag object named by the push event (and fails if the event names
+only the commit), checks the pin against both anchors, verifies the tag
+signature against the pinned signing subkey and tagger identity read from the
+tagged commit, and requires GitHub to report that tag object verified. A passing run is consistency
 evidence, not release authorization: the maintainer's signature on the tag is
 the authorization, and the expected primary still has to be established
 independently as described above.

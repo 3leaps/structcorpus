@@ -3,8 +3,9 @@
 # triggering event. A passing run is consistency evidence, not authorization.
 #
 #   bind    before the checker is installed: the checkout is the event commit,
-#           the tag is an annotated tag object that peels to that commit and
-#           equals the object the event recorded, and the GitHub ref agrees.
+#           the event names the pushed tag object, the fetched tag is that
+#           annotated object and peels to the event commit, and the GitHub ref
+#           agrees.
 #           Prints the bound tag object id.
 #   verify  after the checker is installed (STRUCTCORPUS_DECERNOR_BIN): the
 #           bound object is still the local and remote tag, its signature and
@@ -12,9 +13,9 @@
 #           that object verified; the remote ref is re-read last.
 #
 # Inputs: TAG (github.ref_name), EVENT_REF (github.ref), EVENT_SHA (github.sha,
-# the commit), EVENT_AFTER (github.event.after: the pushed ref value, the tag
-# object for an annotated tag), GITHUB_REPOSITORY, GH_TOKEN; verify also needs
-# TAG_OBJECT (the bind output).
+# the commit), EVENT_AFTER (github.event.after, which must be the pushed
+# annotated tag object; a commit value is refused), GITHUB_REPOSITORY,
+# GH_TOKEN; verify also needs TAG_OBJECT (the bind output).
 set -euo pipefail
 for _git_var in $(compgen -e); do
   case "$_git_var" in
@@ -55,12 +56,12 @@ case "$mode" in
     object="$(git rev-parse "refs/tags/$TAG")"
     [[ "$(git cat-file -t "$object")" == tag ]] || die "$TAG is not an annotated tag"
     [[ "$(git rev-parse "$object^{commit}")" == "$EVENT_SHA" ]] || die "$TAG no longer points at the event commit"
-    # The event records the pushed ref value. For an annotated tag that is the
-    # tag object; if GitHub reports the commit instead, the commit binding
-    # above is the binding.
-    if [[ "$EVENT_AFTER" != "$EVENT_SHA" ]]; then
-      [[ "$object" == "$EVENT_AFTER" ]] || die "$TAG was replaced after the triggering push"
-    fi
+    # The event must name the pushed annotated tag object itself. When it names
+    # only the commit, the original object cannot be bound, so fail closed
+    # rather than accept whatever tag object the ref holds now.
+    [[ "$EVENT_AFTER" != "$EVENT_SHA" ]] ||
+      die 'the event names only the commit, not the pushed tag object; refusing to bind'
+    [[ "$object" == "$EVENT_AFTER" ]] || die "$TAG was replaced after the triggering push"
     [[ "$(remote_object)" == "$object" ]] || die "$TAG on GitHub differs from the fetched tag"
     printf '%s\n' "$object"
     ;;
