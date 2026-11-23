@@ -1,64 +1,72 @@
 #!/usr/bin/env python3
-"""Run the unit tests under TEST_DIR; fail unless at least one test body ran.
+"""Run the unit tests under TEST_DIR; fail on a vacuous or failing run.
 
 Equivalent to ``python3 -m unittest discover -s TEST_DIR`` from the current
-directory, but the exit status also requires at least one executed test and
-no discovery errors: on Python 3.9 to 3.11, unittest exits 0 when discovery
-finds no tests. A test counts as executed when its test method was entered and
-the test did not end as a whole-test skip; fixtures (setUp, cleanups, subtests
-outside the method) cannot mark a test executed. Class, module and subtest
-skips are neither counted nor treated as missing execution. Standard library
-only (3.9+).
+directory, but it also fails when the run is vacuous: no test invocation
+reached an outcome other than a whole-test skip. On Python 3.9 to 3.11,
+unittest itself exits 0 when discovery finds no tests.
+
+Contract. Each test invocation the runner starts counts once (two invocations
+of the same test id count twice) unless that invocation ends as a whole-test
+skip. Skips of subtests, classes or modules, and fixture callbacks, neither
+count nor cancel an invocation. Test methods whose bodies plain unittest would
+never run are refused before running: generator and async-generator methods,
+and coroutine methods outside an IsolatedAsyncioTestCase. Tests are not
+modified. The gate guards against accidental vacuity (nothing discovered,
+everything skipped); whether a test asserts anything is a review question.
+Standard library only (Python 3.9+).
 
 Usage: run-unit-tests.py TEST_DIR
 """
 
-import functools
+import inspect
 import os
 import sys
 import unittest
 
-_SUBTEST = getattr(unittest.case, "_SubTest", ())
-
 
 class CountingResult(unittest.TextTestResult):
-    """Text result that records whole-test skips (not subtest skips)."""
+    """Text result that counts started invocations not ending as whole skips."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.whole_skips = set()
+        self.executed = 0
+        self._current = None
+        self._current_skipped = False
+
+    def startTest(self, test):
+        self._current = test
+        self._current_skipped = False
+        super().startTest(test)
 
     def addSkip(self, test, reason):
-        if isinstance(test, unittest.TestCase) and not isinstance(test, _SUBTEST):
-            self.whole_skips.add(test.id())
+        # Only a skip of the started invocation itself cancels it; subtest,
+        # class and module skips arrive with other objects.
+        if test is self._current:
+            self._current_skipped = True
         super().addSkip(test, reason)
 
-
-def _recording(method, test_id, entered):
-    @functools.wraps(method)
-    def body(*args, **kwargs):
-        entered.add(test_id)
-        return method(*args, **kwargs)
-
-    return body
+    def stopTest(self, test):
+        if test is self._current and not self._current_skipped:
+            self.executed += 1
+        self._current = None
+        super().stopTest(test)
 
 
-def instrument(suite, entered):
-    """Wrap every test method so entering its body records the test id.
-
-    Fixture callbacks (setUp, cleanups, subtests outside the body) cannot mark
-    a test as executed; only the test method itself can.
-    """
+def deferred_bodies(suite):
+    """Yield ids of tests whose method plain unittest would not actually run."""
     for test in suite:
         if isinstance(test, unittest.TestSuite):
-            instrument(test, entered)
-        elif isinstance(test, unittest.TestCase):
-            name = test._testMethodName
-            method = getattr(test, name, None)
-            if method is None:
-                continue
-
-            setattr(test, name, _recording(method, test.id(), entered))
+            yield from deferred_bodies(test)
+            continue
+        if not isinstance(test, unittest.TestCase):
+            continue
+        method = inspect.getattr_static(type(test), getattr(test, "_testMethodName", ""), None)
+        method = getattr(method, "__func__", method)
+        if inspect.isgeneratorfunction(method) or inspect.isasyncgenfunction(method):
+            yield test.id()
+        elif inspect.iscoroutinefunction(method) and not isinstance(test, unittest.IsolatedAsyncioTestCase):
+            yield test.id()
 
 
 def main(argv: list) -> int:
@@ -70,14 +78,15 @@ def main(argv: list) -> int:
     sys.path[0] = os.getcwd()
     loader = unittest.TestLoader()
     suite = loader.discover(argv[1])
-    entered = set()
-    instrument(suite, entered)
-    result = unittest.TextTestRunner(verbosity=1, resultclass=CountingResult).run(suite)
-    executed = entered - result.whole_skips
     if loader.errors:
         print(f"error: {len(loader.errors)} test module(s) failed to load", file=sys.stderr)
         return 1
-    if not executed:
+    deferred = sorted(set(deferred_bodies(suite)))
+    if deferred:
+        print("error: test methods unittest would not run: " + ", ".join(deferred), file=sys.stderr)
+        return 1
+    result = unittest.TextTestRunner(verbosity=1, resultclass=CountingResult).run(suite)
+    if result.executed == 0:
         print("error: no test was executed (none discovered, or all skipped)", file=sys.stderr)
         return 1
     return 0 if result.wasSuccessful() else 1

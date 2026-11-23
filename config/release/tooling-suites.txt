@@ -13,6 +13,7 @@ release-tag-controls
 release-tag-operator
 release-verify-committed-anchors
 release-verify-published-tag
+run-unit-tests
 surface-scan
 sync-changelog-links
 verify-pinned-tag
