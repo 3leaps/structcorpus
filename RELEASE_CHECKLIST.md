@@ -120,8 +120,9 @@ line), even to an empty value, so `unset RELEASE_TAG` first.
       dated `CHANGELOG.md` section, copied as written once the changelog
       passes `make release-guard-release-surfaces`. Edit the draft into the
       release summary, delete the review-marker line, and complete the
-      attribution footer; tagging refuses the message until all three are
-      done. An existing message is never overwritten.
+      attribution footer. Tagging refuses the message until the marker line
+      is deleted and the footer is complete; it cannot tell whether the
+      summary was edited. An existing message is never overwritten.
 - [ ] Create and verify the local signed tag: `make release-tag`
 - [ ] Verify the local tag against the committed pin: `make release-verify-tag`
 - [ ] Publish and verify the tag (local signature against the committed pin,

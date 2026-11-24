@@ -101,21 +101,34 @@ changelog_refused 'section for 1.2.3 is empty'
 # Changelogs the guard accepts, but where a line could start another section
 # that would otherwise leak into the draft: refused, and nothing is created.
 for boundary in ' ## [1.2.1] - 2026-01-01' '  ## [1.2.1] - 2026-01-01' '   ## [1.2.1] - 2026-01-01' \
-  $'##\t[1.2.1] - 2026-01-01' '##' '#' '# Older' $'Older release\n---' $'Older release\n===' '- Entry.' ' ---'; do
+  $'##\t[1.2.1] - 2026-01-01' '##' '#' '# Older' $'Older release\n---' $'Older release\n===' ' ---' \
+  $'Older release\n=' $'Older release\n--' $'Older release\n=== ' $'Older release\n===\t' \
+  $'Older release\n--- ' $'Older release\n---\t' $'Older release\n====' $'Older release\n----' \
+  $'Older release\n===   ' $'Older release\n---   '; do
   with_section $'- Entry.\n\n'"$boundary"$'\n\n- Leaked.\n\n'
   "$scratch/repo/scripts/release-guard-release-surfaces.sh" >/dev/null
-  if [ "$boundary" = '- Entry.' ]; then
-    # Control: an ordinary list item is not a boundary.
-    "$operator" prepare-message >"$scratch/output"
-    grep -q '^- Leaked\.$' "$directory/v1.2.3.txt"
-    rm -r "$directory"
-  else
-    changelog_refused 'could start another section'
-  fi
+  changelog_refused 'could start another section'
+done
+# Controls: lines that cannot start a level-one or level-two section are drafted.
+for line in '- Entry.' '### Added' '    ## indented code' $'\t## tab-indented code' '#hashtag' '##hashtag' \
+  '=== not an underline' '-- not an underline'; do
+  with_section $'- Entry.\n\n'"$line"$'\n\n- Kept.\n\n'
+  "$scratch/repo/scripts/release-guard-release-surfaces.sh" >/dev/null
+  "$operator" prepare-message >"$scratch/output"
+  grep -qxF -- "$line" "$directory/v1.2.3.txt"
+  grep -q '^- Kept\.$' "$directory/v1.2.3.txt"
+  rm -r "$directory"
 done
 rm "$scratch/repo/scripts/release-guard-release-surfaces.sh"
 cp "$scratch/changelog" "$scratch/repo/CHANGELOG.md"
 changelog_refused 'unable to prepare external tag message'
+# Any nonzero guard status refuses, not only status 1, and so does a guard
+# killed by a signal.
+for guard_body in 'exit 2' 'kill -TERM $$'; do
+  printf '#!/usr/bin/env bash\n%s\n' "$guard_body" >"$scratch/repo/scripts/release-guard-release-surfaces.sh"
+  chmod +x "$scratch/repo/scripts/release-guard-release-surfaces.sh"
+  changelog_refused "$guard_refused"
+done
 cp "$root/scripts/release-guard-release-surfaces.sh" "$scratch/repo/scripts/"
 [[ ! -e "$TRACE" ]]
 
@@ -127,7 +140,8 @@ grep -q '^- Entry with a trailing space\. $' "$directory/v1.2.3.txt"
 grep -q 'incomplete: tag message needs one final newline and no CR, NUL or trailing whitespace' "$scratch/output"
 rm -r "$directory"
 
-# Section selection refuses duplicates by itself, though the guard already does.
+# Section selection refuses duplicate and undated headings by itself, though the
+# guard already does.
 python3 -I -B - "$scratch/repo/scripts/release-prepare-tag-message.py" <<'PY'
 import importlib.util
 import sys
@@ -135,13 +149,48 @@ import sys
 spec = importlib.util.spec_from_file_location("prepare", sys.argv[1])
 prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
-text = "## [1.2.3] - 2026-01-02\n\n- One.\n\n## [1.2.3] - 2026-01-03\n\n- Two.\n"
-try:
-    prepare.changelog_section(text, "1.2.3")
-except ValueError as error:
-    assert "exactly one dated section" in str(error), error
-else:
-    sys.exit("error: duplicate sections were accepted")
+for text in (
+    "## [1.2.3] - 2026-01-02\n\n- One.\n\n## [1.2.3] - 2026-01-03\n\n- Two.\n",
+    "## [1.2.3] - Unreleased\n\n- One.\n",
+    "## [1.2.3] - 2026-01-02 (draft)\n\n- One.\n",
+    "## [1.2.3] - 2026-1-2\n\n- One.\n",
+    "## [1.2.3] - 026-01-02\n\n- One.\n",
+    "## [1.2.3] - 20260-01-02\n\n- One.\n",
+    "## [1.2.3] - 2026-1-02\n\n- One.\n",
+    "## [1.2.3] - 2026-01-2\n\n- One.\n",
+    "## [1.2.3] - 2026-001-02\n\n- One.\n",
+    "## [1.2.3] - 2026-01-002\n\n- One.\n",
+):
+    try:
+        prepare.changelog_section(text, "1.2.3")
+    except ValueError as error:
+        assert "exactly one dated section" in str(error), error
+    else:
+        sys.exit(f"error: section heading was accepted: {text.splitlines()[0]!r}")
+
+# Every blank or whitespace-only line around the body is trimmed; inner ones stay.
+text = "## [1.2.3] - 2026-01-02\n\n\n \n\t\n- One.\n\n- Two.\n\n \n\t\n\n## [1.2.2] - 2026-01-01\n"
+body = prepare.changelog_section(text, "1.2.3")
+assert body == ["- One.", "", "- Two."], body
+
+# The body starts on the line after the heading, blank or not.
+text = "## [1.2.3] - 2026-01-02\n- One.\n- Two.\n"
+body = prepare.changelog_section(text, "1.2.3")
+assert body == ["- One.", "- Two."], body
+
+# Any link definition ends the section, whichever definition comes first.
+text = (
+    "## [1.2.3] - 2026-01-02\n\n- One.\n\n"
+    "[1.2.3]: https://github.com/3leaps/structcorpus/releases/tag/v1.2.3\n"
+    "[Unreleased]: https://github.com/3leaps/structcorpus/compare/v1.2.3...HEAD\n"
+)
+body = prepare.changelog_section(text, "1.2.3")
+assert body == ["- One."], body
+
+# Any level-two heading ends the section, not only a release heading.
+text = "## [1.2.3] - 2026-01-02\n\n- One.\n\n## Notes\n\n- Not part of the release.\n"
+body = prepare.changelog_section(text, "1.2.3")
+assert body == ["- One."], body
 PY
 
 # A first release's section ends at the link-definition footer.
